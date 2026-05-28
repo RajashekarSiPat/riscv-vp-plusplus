@@ -1,22 +1,18 @@
 #include <boost/program_options.hpp>
 
-#include <cstdint>
 #include <cstdlib>
 #include <ctime>
-#include <memory>
 #include <iostream>
 
 #include "core/common/clint.h"
 #include "core/common/gdb-mc/gdb_runner.h"
-#include "core/common/gdb-mc/gdb_server.h"
 #include "core/rv32/elf_loader.h"
 #include "core/rv32/iss.h"
 #include "core/rv32/mem.h"
-#include "core/rv32/syscall.h"
 #include "platform/common/bus.h"
-#include "platform/common/ds1307.h"
 #include "platform/common/fe310_plic.h"
-#include "platform/common/fu540_i2c.h"
+#include "platform/common/i2c_bus.h"
+#include "platform/common/i2c_stm32.h"
 #include "platform/common/memory.h"
 #include "platform/common/options.h"
 #include "util/options.h"
@@ -28,21 +24,53 @@ namespace po = boost::program_options;
 struct I2CTestOptions : Options {
 	typedef uint64_t addr_t;
 
-	addr_t mem_start_addr = 0x80000000;
-	addr_t mem_size = 0x01000000;
+	addr_t mem_start_addr = 0x80000000ull;
+	addr_t mem_size = 0x01000000ull;
 	addr_t mem_end_addr = mem_start_addr + mem_size - 1;
-	addr_t clint_start_addr = 0x02000000;
-	addr_t clint_end_addr = 0x0200ffff;
-	addr_t sys_start_addr = 0x02010000;
-	addr_t sys_end_addr = 0x020103ff;
-	addr_t plic_start_addr = 0x40000000;
-	addr_t plic_end_addr = 0x40ffffff;
-	addr_t i2c_start_addr = 0x10030000;
-	addr_t i2c_end_addr = 0x10030fff;
+	addr_t clint_start_addr = 0x02000000ull;
+	addr_t clint_end_addr = 0x0200ffffull;
+	addr_t plic_start_addr = 0x40000000ull;
+	addr_t plic_end_addr = 0x40ffffffull;
+	addr_t i2c0_start_addr = 0x41005400ull;
+	addr_t i2c0_end_addr = 0x410054ffull;
+	addr_t i2c1_start_addr = 0x41005800ull;
+	addr_t i2c1_end_addr = 0x410058ffull;
+	addr_t console_start_addr = 0x09004000ull;
+	addr_t console_end_addr = 0x09004fffull;
+	addr_t exiter_start_addr = 0x09010000ull;
+	addr_t exiter_end_addr = 0x09010fffull;
 
 	void parse(int argc, char **argv) override {
 		Options::parse(argc, argv);
 		mem_end_addr = mem_start_addr + mem_size - 1;
+	}
+};
+
+struct ConsoleUart : sc_core::sc_module {
+	tlm_utils::simple_target_socket<ConsoleUart> tsock;
+
+	explicit ConsoleUart(sc_core::sc_module_name name) : sc_module(name), tsock("tsock") {
+		tsock.register_b_transport(this, &ConsoleUart::b_transport);
+	}
+
+	void b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &) {
+		if (trans.get_command() == tlm::TLM_WRITE_COMMAND && trans.get_address() == 0x04u) {
+			const char c = static_cast<char>(*trans.get_data_ptr());
+			std::cout << c << std::flush;
+		}
+		trans.set_response_status(tlm::TLM_OK_RESPONSE);
+	}
+};
+
+struct Exiter : sc_core::sc_module {
+	tlm_utils::simple_target_socket<Exiter> tsock;
+
+	explicit Exiter(sc_core::sc_module_name name) : sc_module(name), tsock("tsock") {
+		tsock.register_b_transport(this, &Exiter::b_transport);
+	}
+
+	void b_transport(tlm::tlm_generic_payload &, sc_core::sc_time &) {
+		sc_core::sc_stop();
 	}
 };
 
@@ -64,28 +92,46 @@ int sc_main(int argc, char **argv) {
 	SimpleMemory mem("RAM", opt.mem_size);
 	CombinedMemoryInterface iss_mem_if("MemIf", core);
 	ELFLoader loader(opt.input_program.c_str());
-	SyscallHandler sys("SyscallHandler");
-	FE310_PLIC<1, 64, 96, 32> plic("PLIC");
+	FE310_PLIC<1, 16, 32, 32> plic("PLIC");
 	CLINT<1> clint("CLINT");
-	FU540_I2C i2c("I2C", 50);
-	DS1307 *rtc_ds1307 = new DS1307();
+	I2cStm32 i2c0("I2C0");
+	I2cStm32 i2c1("I2C1");
+	I2cBus i2c_bus("I2C_BUS");
+	ConsoleUart console("Console");
+	Exiter exiter("Exiter");
 
-	i2c.register_device(0x68, rtc_ds1307);
+	/* self-contained I2C pair */
+	i2c0.bus_initiator_socket.bind(i2c_bus.target_socket_0);
+	i2c1.bus_initiator_socket.bind(i2c_bus.target_socket_1);
+	i2c_bus.initiator_socket_0.bind(i2c0.bus_target_socket);
+	i2c_bus.initiator_socket_1.bind(i2c1.bus_target_socket);
 
-	SimpleBus<1, 5> bus("Bus", nullptr, opt.break_on_transaction);
-	bus.ports[0] = new PortMapping(opt.mem_start_addr, opt.mem_end_addr, mem);
-	bus.ports[1] = new PortMapping(opt.clint_start_addr, opt.clint_end_addr, clint);
-	bus.ports[2] = new PortMapping(opt.plic_start_addr, opt.plic_end_addr, plic);
-	bus.ports[3] = new PortMapping(opt.i2c_start_addr, opt.i2c_end_addr, i2c);
-	bus.ports[4] = new PortMapping(opt.sys_start_addr, opt.sys_end_addr, sys);
+	/* Bus: 1 initiator (ISS), 7 targets */
+	SimpleBus<1, 7> bus("Bus", nullptr, opt.break_on_transaction);
+
+	{
+		unsigned i = 0;
+		bus.ports[i++] = new PortMapping(opt.mem_start_addr, opt.mem_end_addr, mem);
+		bus.ports[i++] = new PortMapping(opt.clint_start_addr, opt.clint_end_addr, clint);
+		bus.ports[i++] = new PortMapping(opt.plic_start_addr, opt.plic_end_addr, plic);
+		bus.ports[i++] = new PortMapping(opt.i2c0_start_addr, opt.i2c0_end_addr, i2c0);
+		bus.ports[i++] = new PortMapping(opt.i2c1_start_addr, opt.i2c1_end_addr, i2c1);
+		bus.ports[i++] = new PortMapping(opt.console_start_addr, opt.console_end_addr, console);
+		bus.ports[i++] = new PortMapping(opt.exiter_start_addr, opt.exiter_end_addr, exiter);
+	}
 	bus.mapping_complete();
 
 	iss_mem_if.isock.bind(bus.tsocks[0]);
-	bus.isocks[0].bind(mem.tsock);
-	bus.isocks[1].bind(clint.tsock);
-	bus.isocks[2].bind(plic.tsock);
-	bus.isocks[3].bind(i2c.tsock);
-	bus.isocks[4].bind(sys.tsock);
+	{
+		unsigned i = 0;
+		bus.isocks[i++].bind(mem.tsock);
+		bus.isocks[i++].bind(clint.tsock);
+		bus.isocks[i++].bind(plic.tsock);
+		bus.isocks[i++].bind(i2c0.socket);
+		bus.isocks[i++].bind(i2c1.socket);
+		bus.isocks[i++].bind(console.tsock);
+		bus.isocks[i++].bind(exiter.tsock);
+	}
 
 	std::shared_ptr<BusLock> bus_lock = std::make_shared<BusLock>();
 	iss_mem_if.bus_lock = bus_lock;
@@ -108,18 +154,23 @@ int sc_main(int argc, char **argv) {
 	}
 
 	core.init(instr_mem_if, opt.use_dbbcache, data_mem_if, opt.use_lscache, &clint, entry_point, opt.mem_end_addr);
-	sys.init(mem.data, opt.mem_start_addr, loader.get_heap_addr(mem.get_size(), opt.mem_start_addr));
-	sys.register_core(&core);
-	if (opt.intercept_syscalls) {
-		core.sys = &sys;
-	}
-	core.error_on_zero_traphandler = opt.error_on_zero_traphandler;
 
+	/* Interrupt wiring */
 	plic.target_harts[0] = &core;
 	clint.target_harts[0] = &core;
-	i2c.plic = &plic;
+	i2c0.plic = &plic;
+	i2c0.ev_irq_id = 1u;
+	i2c0.er_irq_id = 2u;
+	i2c1.plic = &plic;
+	i2c1.ev_irq_id = 3u;
+	i2c1.er_irq_id = 4u;
 
-	std::cout << "[VP] I2C test platform ready\n";
+	/* Keep the slave addresses fixed for the verification suite. */
+	i2c0.slave_addr = 0x50u;
+	i2c1.slave_addr = 0x51u;
+
+	new DirectCoreRunner(core);
+	opt.handle_property_export_and_exit();
 	sc_core::sc_start();
 	return 0;
 }

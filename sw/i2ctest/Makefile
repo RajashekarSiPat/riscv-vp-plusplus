@@ -5,11 +5,11 @@ LD  = $(RISCV_PREFIX)gcc
 
 ARCH     = rv32imac_zicsr
 ABI      = ilp32
-TEST_MASK ?= 0x1F
+TEST_MASK ?= 0x1FF
 CFLAGS   = -march=$(ARCH) -mabi=$(ABI) -O1 -Wall -DTEST_MASK=$(TEST_MASK)
 ASFLAGS = -march=$(ARCH) -mabi=$(ABI)
-LDFLAGS = -march=$(ARCH) -mabi=$(ABI) -nostartfiles -static -no-pie \
-          -Wl,--no-relax -T link.ld
+LDFLAGS = -march=$(ARCH) -mabi=$(ABI) -nostdlib -static -no-pie \
+          -Wl,--no-relax -T link.ld -lgcc
 
 TARGET  = main.elf
 OBJS    = bootstrap.o main.o
