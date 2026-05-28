@@ -136,6 +136,9 @@ Please note, if *make* is called without the *install* argument in step 2, then 
 
 This will also copy the VP binaries into the *vp/build/bin* folder.
 
+The repository also includes an `i2ctest` example under `sw/i2ctest/` that runs
+the FU540 I2C controller model and DS1307 slave on the `i2ctest-vp` platform.
+
 #### FAQ
 
 **Q:** How do I exit the VP?

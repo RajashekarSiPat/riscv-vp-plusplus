@@ -9,3 +9,5 @@ The provided SW examples demonstrate both approaches for dealing with syscalls.
 The VP also supports the FreeRTOS (see https://github.com/agra-uni-bremen/riscv-freertos) and Zephyr (see https://www.zephyrproject.org/ - use the Zephyr *hifive* board option when building Zephyr applications and use the *hifive-vp* configuration for executing them) operating systems.
 
 The **usart2test** example (`sw/usart2test/`) demonstrates pure SystemC interrupt-driven back-to-back USART2 communication on the `usart2test-vp` platform, including VCD waveform tracing. See [`sw/usart2test/README.md`](usart2test/README.md) for build and run instructions.
+
+The **i2ctest** example (`sw/i2ctest/`) exercises the existing FU540 I2C controller model against the built-in DS1307 slave on the `i2ctest-vp` platform. See [`sw/i2ctest/README.md`](i2ctest/README.md) for build and run instructions.
