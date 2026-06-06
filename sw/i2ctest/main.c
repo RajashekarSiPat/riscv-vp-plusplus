@@ -1215,6 +1215,16 @@ static void test_spi(void)
 
 	spi_init();
 	SPI1_CR2 = 0u;
+	SPI2_CR2 = 0u;
+	SPI2_CR1 |= SPI_CR1_SPE;
+	SPI1_DR = 0x44u;
+	if (!expect_eq("SPI-004B.RXNE", SPI2_SR & SPI_SR_RXNE, SPI_SR_RXNE)) return;
+	if (!expect_eq("SPI-004B.READ", SPI2_DR & 0xFFu, 0x44u)) return;
+	if (!expect_eq("SPI-004B.CLEAR", SPI2_SR & SPI_SR_RXNE, 0u)) return;
+	pass_test("SPI-004B: receive read clears RXNE");
+
+	spi_init();
+	SPI1_CR2 = 0u;
 	SPI2_CR2 = SPI_CR2_ERRIE;
 	i2c_clear_log();
 	from = g_log_count;
@@ -1296,6 +1306,15 @@ static void test_usart(void)
 	if (!expect_eq("USART-004.DATA", g_log[rx_idx].sr2 & 0xFFu, 0xA5u)) return;
 	if (!expect_eq("USART-004.SR", USART2_SR & USART_SR_RXNE, 0u)) return;
 	pass_test("USART-004: byte loopback with interrupts");
+
+	usart_init();
+	USART1_CR1 = USART_CR1_UE | USART_CR1_TE;
+	USART2_CR1 = USART_CR1_UE | USART_CR1_RE;
+	USART1_DR = 0x66u;
+	if (!expect_eq("USART-004B.RXNE", USART2_SR & USART_SR_RXNE, USART_SR_RXNE)) return;
+	if (!expect_eq("USART-004B.READ", USART2_DR & 0xFFu, 0x66u)) return;
+	if (!expect_eq("USART-004B.CLEAR", USART2_SR & (USART_SR_RXNE | USART_SR_ORE), 0u)) return;
+	pass_test("USART-004B: receive read clears RXNE");
 
 	usart_init();
 	USART1_CR1 = USART_CR1_UE | USART_CR1_TE;
