@@ -1225,6 +1225,19 @@ static void test_spi(void)
 
 	spi_init();
 	SPI1_CR2 = 0u;
+	SPI2_CR2 = 0u;
+	SPI2_CR1 |= SPI_CR1_SPE;
+	i2c_clear_log();
+	from = g_log_count;
+	SPI1_DR = 0x77u;
+	if (!expect_eq("SPI-004C.LOG", g_log_count, from)) return;
+	if (!expect_eq("SPI-004C.RXNE", SPI2_SR & SPI_SR_RXNE, SPI_SR_RXNE)) return;
+	if (!expect_eq("SPI-004C.READ", SPI2_DR & 0xFFu, 0x77u)) return;
+	if (!expect_eq("SPI-004C.CLEAR", SPI2_SR & SPI_SR_RXNE, 0u)) return;
+	pass_test("SPI-004C: receive path updates without interrupts");
+
+	spi_init();
+	SPI1_CR2 = 0u;
 	SPI2_CR2 = SPI_CR2_ERRIE;
 	i2c_clear_log();
 	from = g_log_count;
@@ -1315,6 +1328,18 @@ static void test_usart(void)
 	if (!expect_eq("USART-004B.READ", USART2_DR & 0xFFu, 0x66u)) return;
 	if (!expect_eq("USART-004B.CLEAR", USART2_SR & (USART_SR_RXNE | USART_SR_ORE), 0u)) return;
 	pass_test("USART-004B: receive read clears RXNE");
+
+	usart_init();
+	USART1_CR1 = USART_CR1_UE | USART_CR1_TE;
+	USART2_CR1 = USART_CR1_UE | USART_CR1_RE;
+	i2c_clear_log();
+	from = g_log_count;
+	USART1_DR = 0x88u;
+	if (!expect_eq("USART-004C.LOG", g_log_count, from)) return;
+	if (!expect_eq("USART-004C.RXNE", USART2_SR & USART_SR_RXNE, USART_SR_RXNE)) return;
+	if (!expect_eq("USART-004C.READ", USART2_DR & 0xFFu, 0x88u)) return;
+	if (!expect_eq("USART-004C.CLEAR", USART2_SR & USART_SR_RXNE, 0u)) return;
+	pass_test("USART-004C: receive path updates without interrupts");
 
 	usart_init();
 	USART1_CR1 = USART_CR1_UE | USART_CR1_TE;
