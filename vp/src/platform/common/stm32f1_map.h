@@ -25,6 +25,7 @@ static constexpr uint64_t ADC2 = 0x40012800ull + PERIPH_ALIAS;
 static constexpr uint64_t ADC3 = 0x40013C00ull + PERIPH_ALIAS;
 static constexpr uint64_t DAC = 0x40007400ull + PERIPH_ALIAS;
 static constexpr uint64_t CAN1 = 0x40006400ull + PERIPH_ALIAS;
+static constexpr uint64_t SDIO = 0x40018000ull + PERIPH_ALIAS;
 static constexpr uint64_t RTC = 0x40002800ull + PERIPH_ALIAS;
 static constexpr uint64_t BKP = 0x40006C00ull + PERIPH_ALIAS;
 static constexpr uint64_t PWR = 0x40007000ull + PERIPH_ALIAS;
@@ -55,6 +56,9 @@ static constexpr uint32_t RCC_APB2_ADC2 = 1u << 10;
 static constexpr uint32_t RCC_AHB_DMA1 = 1u << 0;
 static constexpr uint32_t RCC_AHB_DMA2 = 1u << 1;
 static constexpr uint32_t RCC_AHB_CRC = 1u << 6;
+static constexpr uint32_t RCC_AHB_FSMC = 1u << 8;
+static constexpr uint32_t RCC_AHB_SDIO = 1u << 10;
+static constexpr uint32_t RCC_AHB_OTGFS = 1u << 12;
 
 static constexpr uint32_t RCC_APB1_TIM2 = 1u << 0;
 static constexpr uint32_t RCC_APB1_TIM3 = 1u << 1;
@@ -97,5 +101,6 @@ static constexpr uint32_t IRQ_CAN1_TX = 25u;
 static constexpr uint32_t IRQ_CAN1_RX0 = 26u;
 static constexpr uint32_t IRQ_CAN1_RX1 = 27u;
 static constexpr uint32_t IRQ_CAN1_SCE = 28u;
+static constexpr uint32_t IRQ_SDIO = 29u;
 
 }  // namespace stm32f1

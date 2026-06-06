@@ -15,6 +15,7 @@
 #include "platform/common/stm32f1_can.h"
 #include "platform/common/stm32f1_dac.h"
 #include "platform/common/stm32f1_flash.h"
+#include "platform/common/stm32f1_sdio.h"
 #include "platform/common/i2c_bus.h"
 #include "platform/common/i2c_stm32.h"
 #include "platform/common/memory.h"
@@ -81,6 +82,8 @@ struct I2CTestOptions : Options {
 	addr_t dac_end_addr = stm32f1::DAC + 0xffull;
 	addr_t can1_start_addr = stm32f1::CAN1;
 	addr_t can1_end_addr = stm32f1::CAN1 + 0x3ffull;
+	addr_t sdio_start_addr = stm32f1::SDIO;
+	addr_t sdio_end_addr = stm32f1::SDIO + 0xffull;
 	addr_t crc_start_addr = stm32f1::CRC;
 	addr_t crc_end_addr = stm32f1::CRC + 0xffull;
 	addr_t spi1_start_addr = stm32f1::SPI1;
@@ -176,6 +179,7 @@ int sc_main(int argc, char **argv) {
 	Stm32f1Adc adc2("ADC2", 1u);
 	Stm32f1Dac dac("DAC");
 	Stm32f1Can can1("CAN1");
+	Stm32f1Sdio sdio("SDIO");
 	Stm32f1Dma dma1("DMA1");
 	Stm32f1Crc crc("CRC");
 	Stm32f1Spi spi1("SPI1");
@@ -220,6 +224,7 @@ int sc_main(int argc, char **argv) {
 	rcc.bind_apb1(14u, [&](bool enabled) { spi2.set_clock_enabled(enabled); }, [&]() { spi2.peripheral_reset(); });
 	rcc.bind_apb1(29u, [&](bool enabled) { dac.set_clock_enabled(enabled); }, [&]() { dac.peripheral_reset(); });
 	rcc.bind_apb1(25u, [&](bool enabled) { can1.set_clock_enabled(enabled); }, [&]() { can1.peripheral_reset(); });
+	rcc.bind_ahb(10u, [&](bool enabled) { sdio.set_clock_enabled(enabled); }, [&]() { sdio.peripheral_reset(); });
 	rcc.bind_apb2(11u, [&](bool enabled) { tim1.set_clock_enabled(enabled); }, [&]() { tim1.peripheral_reset(); });
 	rcc.bind_apb1(0u, [&](bool enabled) { tim2.set_clock_enabled(enabled); }, [&]() { tim2.peripheral_reset(); });
 	rcc.bind_apb1(1u, [&](bool enabled) { tim3.set_clock_enabled(enabled); }, [&]() { tim3.peripheral_reset(); });
@@ -260,6 +265,8 @@ int sc_main(int argc, char **argv) {
 	can1.irq_rx0 = stm32f1::IRQ_CAN1_RX0;
 	can1.irq_rx1 = stm32f1::IRQ_CAN1_RX1;
 	can1.irq_sce = stm32f1::IRQ_CAN1_SCE;
+	sdio.plic = &plic;
+	sdio.irq_id = stm32f1::IRQ_SDIO;
 	dma1.plic = &plic;
 	spi1.plic = &plic;
 	spi1.irq_id = 5u;
@@ -287,8 +294,8 @@ int sc_main(int argc, char **argv) {
 	tim5.plic = &plic;
 	tim5.irq_id = stm32f1::IRQ_TIM5_UP;
 
-	/* Bus: 2 initiators (ISS and DMA1), 36 targets */
-	SimpleBus<2, 36> bus("Bus", nullptr, opt.break_on_transaction);
+	/* Bus: 2 initiators (ISS and DMA1), 37 targets */
+	SimpleBus<2, 37> bus("Bus", nullptr, opt.break_on_transaction);
 
 	{
 		unsigned i = 0;
@@ -320,6 +327,7 @@ int sc_main(int argc, char **argv) {
 		bus.ports[i++] = new PortMapping(opt.adc2_start_addr, opt.adc2_end_addr, adc2);
 		bus.ports[i++] = new PortMapping(opt.dac_start_addr, opt.dac_end_addr, dac);
 		bus.ports[i++] = new PortMapping(opt.can1_start_addr, opt.can1_end_addr, can1);
+		bus.ports[i++] = new PortMapping(opt.sdio_start_addr, opt.sdio_end_addr, sdio);
 		bus.ports[i++] = new PortMapping(opt.dma1_start_addr, opt.dma1_end_addr, dma1);
 		bus.ports[i++] = new PortMapping(opt.crc_start_addr, opt.crc_end_addr, crc);
 		bus.ports[i++] = new PortMapping(opt.spi1_start_addr, opt.spi1_end_addr, spi1);
@@ -361,6 +369,9 @@ int sc_main(int argc, char **argv) {
 		bus.isocks[i++].bind(gpioe.socket);
 		bus.isocks[i++].bind(adc1.socket);
 		bus.isocks[i++].bind(adc2.socket);
+		bus.isocks[i++].bind(dac.socket);
+		bus.isocks[i++].bind(can1.socket);
+		bus.isocks[i++].bind(sdio.socket);
 		bus.isocks[i++].bind(dma1.socket);
 		bus.isocks[i++].bind(crc.socket);
 		bus.isocks[i++].bind(spi1.socket);

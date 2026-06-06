@@ -67,6 +67,9 @@ the I2C regression does, rather than validating register storage alone.
 | PWR, BKP, RTC | Functional backup-domain model with DBP gating, backup reset, and alarm regression |
 | TIM1-TIM5 | Shared update-event timer model with directed regression |
 | WWDG, IWDG | Functional watchdog models with directed register/countdown regression |
+| DAC | Minimal register-level model with trigger/output regression |
+| CAN1 | Minimal register-level loopback model with interrupt regression |
+| SDIO | Minimal register/FIFO model with command and transfer regression |
 | USART | Existing `usart2test` remains a custom test UART, not the RM0008 USART register model |
 | Remaining RM0008 blocks | Not implemented |
 

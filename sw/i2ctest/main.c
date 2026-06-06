@@ -6,7 +6,7 @@
  */
 
 #ifndef TEST_MASK
-#define TEST_MASK 0xFFFFFu
+#define TEST_MASK 0x1FFFFFu
 #endif
 volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_MASK;
 
@@ -25,6 +25,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define ADC2_BASE 0x41012800UL
 #define DAC_BASE 0x41007400UL
 #define CAN1_BASE 0x41006400UL
+#define SDIO_BASE 0x41018000UL
 #define AFIO_BASE 0x41010000UL
 #define EXTI_BASE 0x41010400UL
 #define GPIOA_BASE 0x41010800UL
@@ -58,6 +59,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define RCC_AHBENR MMIO32(RCC_BASE + 0x14UL)
 #define RCC_APB2ENR MMIO32(RCC_BASE + 0x18UL)
 #define RCC_APB1ENR MMIO32(RCC_BASE + 0x1CUL)
+#define RCC_AHBRSTR MMIO32(RCC_BASE + 0x28UL)
 #define RCC_BDCR MMIO32(RCC_BASE + 0x20UL)
 #define RCC_CSR MMIO32(RCC_BASE + 0x24UL)
 
@@ -82,6 +84,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define RCC_APB1_TIM5 (1u << 3)
 #define RCC_AHB_DMA1 (1u << 0)
 #define RCC_AHB_CRC (1u << 6)
+#define RCC_AHB_SDIO (1u << 10)
 #define RCC_APB2_AFIO (1u << 0)
 #define RCC_APB2_GPIOA (1u << 2)
 #define RCC_APB2_GPIOB (1u << 3)
@@ -267,6 +270,53 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define CAN_IER_EWGIE (1u << 19)
 #define CAN_TIR_TXRQ (1u << 0)
 
+#define SDIO_POWER MMIO32(SDIO_BASE + 0x00UL)
+#define SDIO_CLKCR MMIO32(SDIO_BASE + 0x04UL)
+#define SDIO_ARG MMIO32(SDIO_BASE + 0x08UL)
+#define SDIO_CMD MMIO32(SDIO_BASE + 0x0CUL)
+#define SDIO_RESPCMD MMIO32(SDIO_BASE + 0x10UL)
+#define SDIO_RESP1 MMIO32(SDIO_BASE + 0x14UL)
+#define SDIO_RESP2 MMIO32(SDIO_BASE + 0x18UL)
+#define SDIO_RESP3 MMIO32(SDIO_BASE + 0x1CUL)
+#define SDIO_RESP4 MMIO32(SDIO_BASE + 0x20UL)
+#define SDIO_DTIMER MMIO32(SDIO_BASE + 0x24UL)
+#define SDIO_DLEN MMIO32(SDIO_BASE + 0x28UL)
+#define SDIO_DCTRL MMIO32(SDIO_BASE + 0x2CUL)
+#define SDIO_DCOUNT MMIO32(SDIO_BASE + 0x30UL)
+#define SDIO_STA MMIO32(SDIO_BASE + 0x34UL)
+#define SDIO_ICR MMIO32(SDIO_BASE + 0x38UL)
+#define SDIO_MASK MMIO32(SDIO_BASE + 0x3CUL)
+#define SDIO_FIFOCNT MMIO32(SDIO_BASE + 0x48UL)
+#define SDIO_FIFO MMIO32(SDIO_BASE + 0x80UL)
+#define SDIO_POWER_PWRCTRL_MASK 0x3u
+#define SDIO_CLKCR_CLKDIV_MASK 0xFFu
+#define SDIO_CLKCR_CLKEN (1u << 8)
+#define SDIO_CLKCR_PWRSAV (1u << 9)
+#define SDIO_CLKCR_BYPASS (1u << 10)
+#define SDIO_CLKCR_WIDBUS_MASK (0x3u << 11)
+#define SDIO_CLKCR_HWFC_EN (1u << 14)
+#define SDIO_CMD_CMDINDEX_MASK 0x3Fu
+#define SDIO_CMD_WAITRESP_MASK (0x3u << 6)
+#define SDIO_CMD_CPSMEN (1u << 10)
+#define SDIO_CMD_ENCMDCOMPL (1u << 12)
+#define SDIO_CMD_NIEN (1u << 13)
+#define SDIO_CMD_ATACMD (1u << 14)
+#define SDIO_DCTRL_DTEN (1u << 0)
+#define SDIO_DCTRL_DTDIR (1u << 1)
+#define SDIO_DCTRL_DTMODE (1u << 2)
+#define SDIO_DCTRL_DMAEN (1u << 3)
+#define SDIO_DCTRL_DBLOCKSIZE_MASK (0xFu << 4)
+#define SDIO_STA_CMDREND (1u << 6)
+#define SDIO_STA_CMDSENT (1u << 7)
+#define SDIO_STA_DATAEND (1u << 8)
+#define SDIO_STA_TXACT (1u << 12)
+#define SDIO_STA_RXACT (1u << 13)
+#define SDIO_STA_TXFIFOHE (1u << 14)
+#define SDIO_STA_RXFIFOHF (1u << 15)
+#define SDIO_MASK_CMDRENDIE (1u << 6)
+#define SDIO_MASK_CMDSENTIE (1u << 7)
+#define SDIO_MASK_DATAENDIE (1u << 8)
+
 #define I2C0_CR1 MMIO32(I2C0_BASE + 0x00UL)
 #define I2C0_CR2 MMIO32(I2C0_BASE + 0x04UL)
 #define I2C0_OAR1 MMIO32(I2C0_BASE + 0x08UL)
@@ -351,6 +401,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define IRQ_CAN1_RX0 26u
 #define IRQ_CAN1_RX1 27u
 #define IRQ_CAN1_SCE 28u
+#define IRQ_SDIO 29u
 #define IRQ_RTC 16u
 #define IRQ_TIM1_UP 17u
 #define IRQ_TIM2_UP 18u
@@ -785,6 +836,7 @@ static void setup_plic(void)
 	PLIC_PRIO(IRQ_CAN1_RX0) = 1u;
 	PLIC_PRIO(IRQ_CAN1_RX1) = 1u;
 	PLIC_PRIO(IRQ_CAN1_SCE) = 1u;
+	PLIC_PRIO(IRQ_SDIO) = 1u;
 	PLIC_PRIO(IRQ_RTC) = 1u;
 	PLIC_PRIO(IRQ_TIM1_UP) = 1u;
 	PLIC_PRIO(IRQ_TIM2_UP) = 1u;
@@ -795,7 +847,7 @@ static void setup_plic(void)
 	                                  (1u << IRQ_USART2) | (1u << IRQ_RTC) | (1u << IRQ_TIM1_UP) |
 	                                  (1u << IRQ_TIM2_UP) | (1u << IRQ_WWDG) | (1u << IRQ_FLASH) |
 	                                  (1u << IRQ_ADC1_2) | (1u << IRQ_CAN1_TX) | (1u << IRQ_CAN1_RX0) |
-	                                  (1u << IRQ_CAN1_RX1) | (1u << IRQ_CAN1_SCE);
+	                                  (1u << IRQ_CAN1_RX1) | (1u << IRQ_CAN1_SCE) | (1u << IRQ_SDIO);
 	PLIC_THRESHOLD_HART0 = 0u;
 }
 
@@ -1480,6 +1532,65 @@ static void test_can(void)
 	pass_test("CAN-004: APB gate and reset");
 }
 
+static void test_sdio(void)
+{
+	put_str("\r\n--- SDIO Register and FIFO Test ---\r\n");
+	unsigned int from;
+
+	if (!expect_eq("SDIO-001.POWER", SDIO_POWER, 0u)) return;
+	if (!expect_eq("SDIO-001.CLKCR", SDIO_CLKCR, 0u)) return;
+	if (!expect_eq("SDIO-001.STA", SDIO_STA, 0u)) return;
+	pass_test("SDIO-001: reset values");
+
+	RCC_AHBENR |= RCC_AHB_SDIO;
+	SDIO_POWER = 0xFFFFFFFFu;
+	SDIO_CLKCR = 0xFFFFFFFFu;
+	if (!expect_eq("SDIO-002.POWER", SDIO_POWER, SDIO_POWER_PWRCTRL_MASK)) return;
+	if (!expect_eq("SDIO-002.CLKCR", SDIO_CLKCR, 0x5FFFu)) return;
+	pass_test("SDIO-002: writable mask");
+
+	SDIO_MASK = SDIO_MASK_CMDRENDIE | SDIO_MASK_CMDSENTIE | SDIO_MASK_DATAENDIE;
+	SDIO_ARG = 0x12345678u;
+	i2c_clear_log();
+	from = g_log_count;
+	SDIO_CMD = SDIO_CMD_CPSMEN | SDIO_CMD_WAITRESP_MASK | 0x12u;
+	if (!i2c_wait_n(from + 1u)) {
+		fail_test("SDIO-003", "command interrupt timeout");
+		return;
+	}
+	if (!expect_eq("SDIO-003.IRQ", g_log[0].irq_id, IRQ_SDIO)) return;
+	if (!expect_eq("SDIO-003.RESPCMD", SDIO_RESPCMD, 0x12u)) return;
+	if (!expect_eq("SDIO-003.RESP1", SDIO_RESP1, 0x1234576Au)) return;
+	if (!expect_eq("SDIO-003.RESP2", SDIO_RESP2, ~0x12345678u)) return;
+	if (!expect_true("SDIO-003", (SDIO_STA & SDIO_STA_CMDREND) != 0u, "CMDREND missing")) return;
+	pass_test("SDIO-003: command completion and response registers");
+
+	i2c_clear_log();
+	SDIO_DCTRL = SDIO_DCTRL_DTEN;
+	SDIO_FIFO = 0xA5A50001u;
+	SDIO_FIFO = 0x5A5A0002u;
+	if (!expect_eq("SDIO-004.COUNT", SDIO_FIFOCNT, 2u)) return;
+	if (!expect_eq("SDIO-004.DCOUNT", SDIO_DCOUNT, 8u)) return;
+	if (!expect_true("SDIO-004", (SDIO_STA & SDIO_STA_DATAEND) != 0u, "DATAEND missing")) return;
+	if (!expect_eq("SDIO-004.READ0", SDIO_FIFO, 0xA5A50001u)) return;
+	if (!expect_eq("SDIO-004.READ1", SDIO_FIFO, 0x5A5A0002u)) return;
+	pass_test("SDIO-004: FIFO loopback and transfer accounting");
+
+	SDIO_CLKCR = SDIO_CLKCR_CLKEN | 0x03u;
+	RCC_AHBENR &= ~RCC_AHB_SDIO;
+	if (!expect_eq("SDIO-005.GATED", SDIO_CLKCR, 0u)) return;
+	SDIO_CLKCR = 0u;
+	RCC_AHBENR |= RCC_AHB_SDIO;
+	if (!expect_eq("SDIO-005.RETAIN", SDIO_CLKCR, SDIO_CLKCR_CLKEN | 0x03u)) return;
+	RCC_AHBRSTR = RCC_AHB_SDIO;
+	RCC_AHBRSTR = 0u;
+	if (!expect_eq("SDIO-005.RESET_POWER", SDIO_POWER, 0u)) return;
+	if (!expect_eq("SDIO-005.RESET_CLKCR", SDIO_CLKCR, 0u)) return;
+	if (!expect_eq("SDIO-005.RESET_STA", SDIO_STA, 0u)) return;
+	if (!expect_eq("SDIO-005.RESET_FIFO", SDIO_FIFOCNT, 0u)) return;
+	pass_test("SDIO-005: AHB gate and reset");
+}
+
 static void i2c_stop(void)
 {
 	I2C0_CR1 |= CR1_STOP;
@@ -1895,6 +2006,18 @@ void trap_handler(void)
 			g_log[idx].irq_id = irq_id;
 			g_log[idx].sr1 = esr;
 			g_log[idx].sr2 = msr;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_SDIO) {
+		unsigned int sta = SDIO_STA;
+		unsigned int count = SDIO_FIFOCNT;
+		SDIO_ICR = sta;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = sta;
+			g_log[idx].sr2 = count;
 			__asm__ volatile("fence" ::: "memory");
 			g_log_count = idx + 1u;
 		}
@@ -2555,6 +2678,7 @@ void isr_main(void)
 	if (g_test_mask & 0x20000u) test_adc();
 	if (g_test_mask & 0x40000u) test_dac();
 	if (g_test_mask & 0x80000u) test_can();
+	if (g_test_mask & 0x100000u) test_sdio();
 	if (g_test_mask & 0x1000u) test_spi();
 	if (g_test_mask & 0x800u) test_usart();
 	i2c_init();
