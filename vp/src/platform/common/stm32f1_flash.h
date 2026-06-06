@@ -121,6 +121,7 @@ private:
 		if (m_optkey_stage == 1u && value == OPTKEY2) {
 			m_opt_locked = false;
 			m_optkey_stage = 0u;
+			m_cr |= CR_OPTWRE;
 			return;
 		}
 		m_optkey_stage = 0u;
@@ -181,7 +182,7 @@ private:
 			result = m_obr;
 			break;
 		case OFF_WRPR:
-			if (write) m_wrpr = value;
+			if (write && (!m_opt_locked || (m_cr & CR_OPTWRE) != 0u)) m_wrpr = value;
 			result = m_wrpr;
 			break;
 		default:

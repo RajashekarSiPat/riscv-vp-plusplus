@@ -1524,6 +1524,17 @@ static void test_flash(void)
 	FLASH_CR = FLASH_CR_LOCK;
 	if (!expect_eq("FL-003.LOCK", FLASH_CR, FLASH_CR_LOCK)) return;
 	pass_test("FL-003: status clear and relock");
+
+	FLASH_WRPR = 0x12345678u;
+	if (!expect_eq("FL-004.LOCKED", FLASH_WRPR, 0xFFFFFFFFu)) return;
+	FLASH_OPTKEYR = 0x08192A3Bu;
+	FLASH_OPTKEYR = 0x4C5D6E7Fu;
+	FLASH_WRPR = 0x12345678u;
+	if (!expect_eq("FL-004.UNLOCKED", FLASH_WRPR, 0x12345678u)) return;
+	FLASH_CR = FLASH_CR_LOCK;
+	FLASH_WRPR = 0x87654321u;
+	if (!expect_eq("FL-004.RELOCKED", FLASH_WRPR, 0x12345678u)) return;
+	pass_test("FL-004: option-key unlock gates write-protection register");
 }
 
 static void test_adc(void)
