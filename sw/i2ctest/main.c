@@ -1895,6 +1895,22 @@ static void test_can(void)
 	if (!expect_eq("CAN-005.RESET_TSR", CAN1_TSR, 0x1C000000u)) return;
 	if (!expect_eq("CAN-005.RESET_IER", CAN1_IER, 0u)) return;
 	pass_test("CAN-005: APB gate and reset");
+
+	CAN1_IER = CAN_IER_FMPIE0;
+	i2c_clear_log();
+	from = g_log_count;
+	CAN1_TI0R = 0x00000155u | CAN_TIR_TXRQ;
+	CAN1_TDT0R = 0x00040000u;
+	CAN1_TDL0R = 0x11223344u;
+	CAN1_TDH0R = 0x55667788u;
+	if (!i2c_wait_n(from + 1u)) {
+		fail_test("CAN-006", "masked transmit IRQ timeout");
+		return;
+	}
+	if (!expect_eq("CAN-006.LOG", g_log_count, from + 1u)) return;
+	if (!expect_eq("CAN-006.IRQ", g_log[0].irq_id, IRQ_CAN1_RX0)) return;
+	if (!expect_eq("CAN-006.TSR", CAN1_TSR & (CAN_TSR_RQCP0 | CAN_TSR_TXOK0), CAN_TSR_RQCP0 | CAN_TSR_TXOK0)) return;
+	pass_test("CAN-006: transmit-complete IRQ masked while RX FIFO still updates");
 }
 
 static void test_sdio(void)
@@ -1970,6 +1986,23 @@ static void test_sdio(void)
 	if (!expect_eq("SDIO-005.RESET_STA", SDIO_STA, 0u)) return;
 	if (!expect_eq("SDIO-005.RESET_FIFO", SDIO_FIFOCNT, 0u)) return;
 	pass_test("SDIO-005: AHB gate and reset");
+
+	SDIO_MASK = 0u;
+	SDIO_ICR = 0xFFFFFFFFu;
+	i2c_clear_log();
+	from = g_log_count;
+	SDIO_ARG = 0x12345678u;
+	SDIO_CMD = SDIO_CMD_CPSMEN | SDIO_CMD_WAITRESP_MASK | 0x12u;
+	if (!expect_eq("SDIO-006.STA", SDIO_STA & SDIO_STA_CMDREND, SDIO_STA_CMDREND)) return;
+	if (!expect_eq("SDIO-006.LOG", g_log_count, from)) return;
+	SDIO_MASK = SDIO_MASK_CMDRENDIE;
+	SDIO_CMD = SDIO_CMD_CPSMEN | SDIO_CMD_WAITRESP_MASK | 0x13u;
+	if (!i2c_wait_n(from + 1u)) {
+		fail_test("SDIO-006", "masked command interrupt timeout");
+		return;
+	}
+	if (!expect_eq("SDIO-006.IRQ", g_log[from].irq_id, IRQ_SDIO)) return;
+	pass_test("SDIO-006: command status still updates when interrupt mask is clear");
 }
 
 static void test_fsmc(void)
@@ -2185,6 +2218,17 @@ static void test_eth(void)
 	if (!expect_eq("ETH-004.RESET_MACCR", ETH_MACCR, 0u)) return;
 	if (!expect_eq("ETH-004.RESET_DMASR", ETH_DMASR, 0u)) return;
 	pass_test("ETH-004: software reset");
+
+	ETH_DMAIER = 0u;
+	i2c_clear_log();
+	unsigned int from = g_log_count;
+	ETH_SEND_SRC = (uint32_t)(uintptr_t)g_eth_src_frame;
+	ETH_SEND_SIZE = 16u;
+	ETH_STATUS = ETH_STATUS_SEND;
+	if (!expect_eq("ETH-005.STATUS", ETH_STATUS, ETH_STATUS_SEND)) return;
+	if (!expect_eq("ETH-005.DMASR", ETH_DMASR & (ETH_DMASR_TI | ETH_DMASR_NIS), ETH_DMASR_TI | ETH_DMASR_NIS)) return;
+	if (!expect_eq("ETH-005.LOG", g_log_count, from)) return;
+	pass_test("ETH-005: DMA interrupt masking still preserves status updates");
 }
 
 static void i2c_stop(void)
