@@ -1478,8 +1478,11 @@ static void test_watchdogs(void)
 		(void)WWDG_CR;
 		(void)WWDG_SR;
 	}
+	if (!expect_true("WDG-002", i2c_find(0u, IRQ_WWDG, WWDG_SR_EWIF) >= 0, "WWDG interrupt missing")) return;
 	if (!expect_true("WDG-002", (WWDG_SR & WWDG_SR_EWIF) != 0u, "WWDG early wakeup flag missing"))
 		return;
+	WWDG_SR = WWDG_SR_EWIF;
+	if (!expect_eq("WDG-002.CLEAR", WWDG_SR & WWDG_SR_EWIF, 0u)) return;
 	pass_test("WDG-002: WWDG counter progression and early wakeup flag");
 
 	IWDG_KR = IWDG_KR_UNLOCK;
