@@ -1692,6 +1692,7 @@ static void test_flash(void)
 static void test_adc(void)
 {
 	put_str("\r\n--- ADC1/ADC2 Conversion Test ---\r\n");
+	unsigned int from;
 	i2c_clear_log();
 
 	if (!expect_eq("ADC-001.SR", ADC_SR, 0u)) return;
@@ -1725,6 +1726,19 @@ static void test_adc(void)
 	if (!expect_eq("ADC-002.CLEAR", ADC_SR & ADC_SR_EOC, 0u)) return;
 	pass_test("ADC-002: ADC1 software conversion");
 
+	ADC_CR1 = 0u;
+	ADC_SQR3 = 11u;
+	ADC_CR2 = ADC_CR2_ADON;
+	i2c_clear_log();
+	from = g_log_count;
+	ADC_CR2 = ADC_CR2_ADON | ADC_CR2_SWSTART;
+	if (!expect_eq("ADC-002B.LOG", g_log_count, from)) return;
+	if (!expect_true("ADC-002B", (ADC_SR & ADC_SR_EOC) != 0u, "ADC1 EOC missing without IRQ")) return;
+	if (!expect_eq("ADC-002B.DR", ADC_DR, 0x10Bu)) return;
+	ADC_SR = ADC_SR_EOC;
+	if (!expect_eq("ADC-002B.CLEAR", ADC_SR & ADC_SR_EOC, 0u)) return;
+	pass_test("ADC-002B: ADC1 conversion updates data without interrupt");
+
 	ADC2_CR1 = ADC_CR1_EOCIE;
 	ADC2_SQR3 = 9u;
 	ADC2_CR2 = ADC_CR2_ADON;
@@ -1738,6 +1752,19 @@ static void test_adc(void)
 	if (!expect_eq("ADC-003.DR", ADC2_DR, 0x209u)) return;
 	if (!expect_eq("ADC-003.CLEAR", ADC2_SR & ADC_SR_EOC, 0u)) return;
 	pass_test("ADC-003: ADC2 software conversion");
+
+	ADC2_CR1 = 0u;
+	ADC2_SQR3 = 13u;
+	ADC2_CR2 = ADC_CR2_ADON;
+	i2c_clear_log();
+	from = g_log_count;
+	ADC2_CR2 = ADC_CR2_ADON | ADC_CR2_SWSTART;
+	if (!expect_eq("ADC-003B.LOG", g_log_count, from)) return;
+	if (!expect_true("ADC-003B", (ADC2_SR & ADC_SR_EOC) != 0u, "ADC2 EOC missing without IRQ")) return;
+	if (!expect_eq("ADC-003B.DR", ADC2_DR, 0x20Du)) return;
+	ADC2_SR = ADC_SR_EOC;
+	if (!expect_eq("ADC-003B.CLEAR", ADC2_SR & ADC_SR_EOC, 0u)) return;
+	pass_test("ADC-003B: ADC2 conversion updates data without interrupt");
 
 	ADC_SR = ADC_SR_EOC;
 	ADC2_SR = ADC_SR_EOC;
