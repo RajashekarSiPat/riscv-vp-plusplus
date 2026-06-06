@@ -1634,15 +1634,32 @@ static void test_watchdogs(void)
 	if (!expect_eq("WDG-002.CLEAR", WWDG_SR & WWDG_SR_EWIF, 0u)) return;
 	pass_test("WDG-002: WWDG counter progression and early wakeup flag");
 
+	WWDG_CR = WWDG_CR_WDGA | 0x41u;
+	WWDG_CFR = 0x20u;
+	i2c_clear_log();
+	for (unsigned int i = 0u; i < 4u; ++i) {
+		(void)WWDG_CR;
+		(void)WWDG_SR;
+	}
+	if (!expect_eq("WDG-002B.LOG", g_log_count, 0u)) return;
+	if (!expect_true("WDG-002B", (WWDG_SR & WWDG_SR_EWIF) != 0u, "WWDG flag missing without IRQ")) return;
+	pass_test("WDG-002B: WWDG EWI flag still sets when interrupt is masked");
+
+	IWDG_PR = 0x2u;
+	IWDG_RLR = 0x345u;
+	if (!expect_eq("WDG-003.LOCKED_PR", IWDG_PR, 0u)) return;
+	if (!expect_eq("WDG-003.LOCKED_RLR", IWDG_RLR, 0x0FFFu)) return;
+	pass_test("WDG-003: locked IWDG configuration writes are ignored");
+
 	IWDG_KR = IWDG_KR_UNLOCK;
 	IWDG_PR = 0xFFFFFFFFu;
 	IWDG_RLR = 0xFFFFFFFFu;
-	if (!expect_eq("WDG-003.PR", IWDG_PR, IWDG_PR_MASK)) return;
-	if (!expect_eq("WDG-003.RLR", IWDG_RLR, IWDG_RLR_MASK)) return;
+	if (!expect_eq("WDG-004.PR", IWDG_PR, IWDG_PR_MASK)) return;
+	if (!expect_eq("WDG-004.RLR", IWDG_RLR, 0x0FFFu)) return;
 	IWDG_KR = IWDG_KR_RELOAD;
 	IWDG_KR = IWDG_KR_START;
-	if (!expect_eq("WDG-003.KR", IWDG_KR, IWDG_KR_START)) return;
-	pass_test("WDG-003: IWDG unlock and reload/start semantics");
+	if (!expect_eq("WDG-004.KR", IWDG_KR, IWDG_KR_START)) return;
+	pass_test("WDG-004: IWDG unlock and reload/start semantics");
 }
 
 static void test_flash(void)
