@@ -1570,6 +1570,21 @@ static void test_timers(void)
 	if (!expect_eq("TIM-001B.CLEAR", TIM1_SR & TIM_SR_CC1IF, 0u)) return;
 	pass_test("TIM-001B: TIM1 compare-match interrupt");
 
+	TIM1_DIER = 0u;
+	TIM1_SR = 0u;
+	TIM1_CNT = 0u;
+	TIM1_ARR = 10u;
+	TIM1_CCR1 = 2u;
+	i2c_clear_log();
+	from = g_log_count;
+	(void)TIM1_CNT;
+	(void)TIM1_CNT;
+	if (!expect_eq("TIM-001B2.LOG", g_log_count, from)) return;
+	if (!expect_true("TIM-001B2", (TIM1_SR & TIM_SR_CC1IF) != 0u, "compare flag missing without IRQ")) return;
+	TIM1_SR = TIM_SR_CC1IF;
+	if (!expect_eq("TIM-001B2.CLEAR", TIM1_SR & TIM_SR_CC1IF, 0u)) return;
+	pass_test("TIM-001B2: TIM1 compare-match updates status without interrupt");
+
 	TIM1_DIER = TIM_DIER_UIE;
 	TIM1_SR = 0u;
 	TIM1_CNT = 0u;
@@ -1585,6 +1600,14 @@ static void test_timers(void)
 	if (!expect_true("TIM-001C", (TIM1_SR & TIM_SR_UIF) != 0u, "one-pulse UIF missing")) return;
 	if (!expect_eq("TIM-001C.STOP", TIM1_CR1 & TIM_CR1_CEN, 0u)) return;
 	pass_test("TIM-001C: update-disable and one-pulse mode");
+
+	TIM1_DIER = 0u;
+	TIM1_SR = 0u;
+	TIM1_CR1 = TIM_CR1_CEN;
+	TIM1_EGR = TIM_EGR_UG;
+	if (!expect_eq("TIM-001D.LOG", g_log_count, from)) return;
+	if (!expect_true("TIM-001D", (TIM1_SR & TIM_SR_UIF) != 0u, "UG UIF missing without IRQ")) return;
+	pass_test("TIM-001D: update generation updates status without interrupt");
 
 	TIM1_CR1 = TIM_CR1_CEN;
 	RCC_APB2ENR &= ~RCC_APB2_TIM1;
