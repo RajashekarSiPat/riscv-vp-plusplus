@@ -41,6 +41,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define EXTI_IMR MMIO32(EXTI_BASE + 0x00UL)
 #define EXTI_RTSR MMIO32(EXTI_BASE + 0x08UL)
 #define EXTI_FTSR MMIO32(EXTI_BASE + 0x0CUL)
+#define EXTI_SWIER MMIO32(EXTI_BASE + 0x10UL)
 #define EXTI_PR MMIO32(EXTI_BASE + 0x14UL)
 
 #define GPIOA_CRL MMIO32(GPIOA_BASE + 0x00UL)
@@ -1076,6 +1077,23 @@ static void test_gpio_exti(void)
 	if (!expect_eq("GPIO-002.IRQ", g_log[mon.from].irq_id, IRQ_EXTI1)) return;
 	if (!expect_eq("GPIO-002.IDR", GPIOB_IDR & (1u << 1u), 0u)) return;
 	pass_test("GPIO-002: falling edge propagates through loopback");
+
+	EXTI_IMR &= ~(1u << 1u);
+	monitor_begin(&mon);
+	EXTI_SWIER = 1u << 1u;
+	if (!expect_eq("GPIO-003.NOIRQ", g_log_count, mon.from)) return;
+	if (!expect_eq("GPIO-003.PR", EXTI_PR & (1u << 1u), 1u << 1u)) return;
+	EXTI_PR = 1u << 1u;
+	EXTI_IMR |= 1u << 1u;
+	monitor_begin(&mon);
+	EXTI_SWIER = 1u << 1u;
+	if (!i2c_wait_n(mon.from + 1u)) {
+		fail_test("GPIO-003", "software interrupt timeout");
+		return;
+	}
+	if (!expect_eq("GPIO-003.IRQ", g_log[mon.from].irq_id, IRQ_EXTI1)) return;
+	if (!expect_eq("GPIO-003.CLEAR", EXTI_PR & (1u << 1u), 1u << 1u)) return;
+	pass_test("GPIO-003: software interrupt respects mask and pending");
 }
 
 static void usart_init(void)

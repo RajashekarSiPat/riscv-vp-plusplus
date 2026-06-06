@@ -132,7 +132,7 @@ private:
 				m_swier |= value;
 				m_pr |= value;
 				for (unsigned line = 0; line < 16u; ++line) {
-					if ((value >> line) & 1u) {
+					if (((value >> line) & 1u) != 0u && ((m_imr >> line) & 1u) != 0u) {
 						trigger(line);
 					}
 				}
