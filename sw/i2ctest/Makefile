@@ -5,7 +5,7 @@ LD  = $(RISCV_PREFIX)gcc
 
 ARCH     = rv32imac_zicsr
 ABI      = ilp32
-TEST_MASK ?= 0x1FF
+TEST_MASK ?= 0xFFFFF
 CFLAGS   = -march=$(ARCH) -mabi=$(ABI) -O1 -Wall -DTEST_MASK=$(TEST_MASK)
 ASFLAGS = -march=$(ARCH) -mabi=$(ABI)
 LDFLAGS = -march=$(ARCH) -mabi=$(ABI) -nostdlib -static -no-pie \

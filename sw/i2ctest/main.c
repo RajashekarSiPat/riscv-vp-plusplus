@@ -1,12 +1,12 @@
-/* main.c - RV32 bare-metal STM32-style I2C verification suite for VP++
+/* main.c - RV32 bare-metal STM32-style peripheral verification suite for VP++
  *
- * The firmware exercises the i2c_stm32 controller pair in the riscv-vp-plusplus
+ * The firmware exercises the STM32F1 peripheral models in the riscv-vp-plusplus
  * platform. I2C0 acts as master, I2C1 acts as the peer slave, and every directed
  * scenario validates the interrupts observed during the transaction.
  */
 
 #ifndef TEST_MASK
-#define TEST_MASK 0x1FFu
+#define TEST_MASK 0xFFFFFu
 #endif
 volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_MASK;
 
@@ -20,6 +20,252 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 
 #define I2C0_BASE 0x41005400UL
 #define I2C1_BASE 0x41005800UL
+#define FLASH_BASE 0x41022000UL
+#define ADC1_BASE 0x41012400UL
+#define ADC2_BASE 0x41012800UL
+#define DAC_BASE 0x41007400UL
+#define CAN1_BASE 0x41006400UL
+#define AFIO_BASE 0x41010000UL
+#define EXTI_BASE 0x41010400UL
+#define GPIOA_BASE 0x41010800UL
+#define GPIOB_BASE 0x41010C00UL
+#define RCC_BASE 0x41021000UL
+
+#define AFIO_EXTICR1 MMIO32(AFIO_BASE + 0x08UL)
+
+#define EXTI_IMR MMIO32(EXTI_BASE + 0x00UL)
+#define EXTI_RTSR MMIO32(EXTI_BASE + 0x08UL)
+#define EXTI_FTSR MMIO32(EXTI_BASE + 0x0CUL)
+#define EXTI_PR MMIO32(EXTI_BASE + 0x14UL)
+
+#define GPIOA_CRL MMIO32(GPIOA_BASE + 0x00UL)
+#define GPIOA_IDR MMIO32(GPIOA_BASE + 0x08UL)
+#define GPIOA_ODR MMIO32(GPIOA_BASE + 0x0CUL)
+#define GPIOA_BSRR MMIO32(GPIOA_BASE + 0x10UL)
+#define GPIOA_BRR MMIO32(GPIOA_BASE + 0x14UL)
+
+#define GPIOB_CRL MMIO32(GPIOB_BASE + 0x00UL)
+#define GPIOB_IDR MMIO32(GPIOB_BASE + 0x08UL)
+#define GPIOB_ODR MMIO32(GPIOB_BASE + 0x0CUL)
+#define GPIOB_BSRR MMIO32(GPIOB_BASE + 0x10UL)
+#define GPIOB_BRR MMIO32(GPIOB_BASE + 0x14UL)
+
+#define RCC_CR MMIO32(RCC_BASE + 0x00UL)
+#define RCC_CFGR MMIO32(RCC_BASE + 0x04UL)
+#define RCC_CIR MMIO32(RCC_BASE + 0x08UL)
+#define RCC_APB2RSTR MMIO32(RCC_BASE + 0x0CUL)
+#define RCC_APB1RSTR MMIO32(RCC_BASE + 0x10UL)
+#define RCC_AHBENR MMIO32(RCC_BASE + 0x14UL)
+#define RCC_APB2ENR MMIO32(RCC_BASE + 0x18UL)
+#define RCC_APB1ENR MMIO32(RCC_BASE + 0x1CUL)
+#define RCC_BDCR MMIO32(RCC_BASE + 0x20UL)
+#define RCC_CSR MMIO32(RCC_BASE + 0x24UL)
+
+#define RCC_CR_HSION (1u << 0)
+#define RCC_CR_HSIRDY (1u << 1)
+#define RCC_CR_HSEON (1u << 16)
+#define RCC_CR_HSERDY (1u << 17)
+#define RCC_CR_PLLON (1u << 24)
+#define RCC_CR_PLLRDY (1u << 25)
+#define RCC_APB1_I2C1 (1u << 21)
+#define RCC_APB1_I2C2 (1u << 22)
+#define RCC_APB1_SPI2 (1u << 14)
+#define RCC_APB1_USART2 (1u << 17)
+#define RCC_APB1_BKP (1u << 27)
+#define RCC_APB1_PWR (1u << 28)
+#define RCC_APB1_CAN1 (1u << 25)
+#define RCC_APB1_DAC (1u << 29)
+#define RCC_APB1_WWDG (1u << 11)
+#define RCC_APB1_TIM2 (1u << 0)
+#define RCC_APB1_TIM3 (1u << 1)
+#define RCC_APB1_TIM4 (1u << 2)
+#define RCC_APB1_TIM5 (1u << 3)
+#define RCC_AHB_DMA1 (1u << 0)
+#define RCC_AHB_CRC (1u << 6)
+#define RCC_APB2_AFIO (1u << 0)
+#define RCC_APB2_GPIOA (1u << 2)
+#define RCC_APB2_GPIOB (1u << 3)
+#define RCC_APB2_ADC1 (1u << 9)
+#define RCC_APB2_ADC2 (1u << 10)
+#define RCC_APB2_SPI1 (1u << 12)
+#define RCC_APB2_USART1 (1u << 14)
+#define RCC_APB2_TIM1 (1u << 11)
+#define RCC_BDCR_RTCEN (1u << 15)
+#define RCC_BDCR_BDRST (1u << 16)
+
+#define PWR_BASE 0x41007000UL
+#define BKP_BASE 0x41006C00UL
+#define RTC_BASE 0x41002800UL
+#define PWR_CR MMIO32(PWR_BASE + 0x00UL)
+#define PWR_CSR MMIO32(PWR_BASE + 0x04UL)
+#define PWR_CR_DBP (1u << 8)
+
+#define BKP_DR1 MMIO32(BKP_BASE + 0x04UL)
+#define BKP_DR10 MMIO32(BKP_BASE + 0x28UL)
+#define BKP_RTCCR MMIO32(BKP_BASE + 0x2CUL)
+#define BKP_CR MMIO32(BKP_BASE + 0x30UL)
+#define BKP_CSR MMIO32(BKP_BASE + 0x34UL)
+#define BKP_DR11 MMIO32(BKP_BASE + 0x38UL)
+#define BKP_DR42 MMIO32(BKP_BASE + 0xB4UL)
+
+#define RTC_CRL MMIO32(RTC_BASE + 0x00UL)
+#define RTC_CRH MMIO32(RTC_BASE + 0x04UL)
+#define RTC_PRLH MMIO32(RTC_BASE + 0x08UL)
+#define RTC_PRLL MMIO32(RTC_BASE + 0x0CUL)
+#define RTC_DIVH MMIO32(RTC_BASE + 0x10UL)
+#define RTC_DIVL MMIO32(RTC_BASE + 0x14UL)
+#define RTC_CNTH MMIO32(RTC_BASE + 0x18UL)
+#define RTC_CNTL MMIO32(RTC_BASE + 0x1CUL)
+#define RTC_ALRH MMIO32(RTC_BASE + 0x20UL)
+#define RTC_ALRL MMIO32(RTC_BASE + 0x24UL)
+
+#define RTC_CRL_SECF (1u << 0)
+#define RTC_CRL_ALRF (1u << 1)
+#define RTC_CRH_SECIE (1u << 0)
+#define RTC_CRH_ALRIE (1u << 1)
+
+#define TIM1_BASE 0x41012C00UL
+#define TIM2_BASE 0x41000000UL
+#define TIM1_CR1 MMIO32(TIM1_BASE + 0x00UL)
+#define TIM1_DIER MMIO32(TIM1_BASE + 0x0CUL)
+#define TIM1_SR MMIO32(TIM1_BASE + 0x10UL)
+#define TIM1_EGR MMIO32(TIM1_BASE + 0x14UL)
+#define TIM1_CNT MMIO32(TIM1_BASE + 0x24UL)
+#define TIM1_PSC MMIO32(TIM1_BASE + 0x28UL)
+#define TIM1_ARR MMIO32(TIM1_BASE + 0x2CUL)
+
+#define TIM2_CR1 MMIO32(TIM2_BASE + 0x00UL)
+#define TIM2_DIER MMIO32(TIM2_BASE + 0x0CUL)
+#define TIM2_SR MMIO32(TIM2_BASE + 0x10UL)
+#define TIM2_EGR MMIO32(TIM2_BASE + 0x14UL)
+#define TIM2_CNT MMIO32(TIM2_BASE + 0x24UL)
+#define TIM2_PSC MMIO32(TIM2_BASE + 0x28UL)
+#define TIM2_ARR MMIO32(TIM2_BASE + 0x2CUL)
+
+#define TIM_CR1_CEN (1u << 0)
+#define TIM_DIER_UIE (1u << 0)
+#define TIM_SR_UIF (1u << 0)
+#define TIM_EGR_UG (1u << 0)
+
+#define FLASH_ACR MMIO32(FLASH_BASE + 0x00UL)
+#define FLASH_KEYR MMIO32(FLASH_BASE + 0x04UL)
+#define FLASH_OPTKEYR MMIO32(FLASH_BASE + 0x08UL)
+#define FLASH_SR MMIO32(FLASH_BASE + 0x0CUL)
+#define FLASH_CR MMIO32(FLASH_BASE + 0x10UL)
+#define FLASH_AR MMIO32(FLASH_BASE + 0x14UL)
+#define FLASH_OBR MMIO32(FLASH_BASE + 0x1CUL)
+#define FLASH_WRPR MMIO32(FLASH_BASE + 0x20UL)
+
+#define FLASH_SR_EOP (1u << 0)
+#define FLASH_SR_PGERR (1u << 2)
+#define FLASH_SR_WRPRTERR (1u << 4)
+#define FLASH_SR_BSY (1u << 5)
+#define FLASH_CR_PG (1u << 0)
+#define FLASH_CR_PER (1u << 1)
+#define FLASH_CR_MER (1u << 2)
+#define FLASH_CR_OPTPG (1u << 4)
+#define FLASH_CR_OPTER (1u << 5)
+#define FLASH_CR_STRT (1u << 6)
+#define FLASH_CR_LOCK (1u << 7)
+#define FLASH_CR_OPTWRE (1u << 9)
+#define FLASH_CR_OBL_LAUNCH (1u << 13)
+
+#define ADC_SR MMIO32(ADC1_BASE + 0x00UL)
+#define ADC_CR1 MMIO32(ADC1_BASE + 0x04UL)
+#define ADC_CR2 MMIO32(ADC1_BASE + 0x08UL)
+#define ADC_SMPR1 MMIO32(ADC1_BASE + 0x0CUL)
+#define ADC_SMPR2 MMIO32(ADC1_BASE + 0x10UL)
+#define ADC_SQR1 MMIO32(ADC1_BASE + 0x2CUL)
+#define ADC_SQR2 MMIO32(ADC1_BASE + 0x30UL)
+#define ADC_SQR3 MMIO32(ADC1_BASE + 0x34UL)
+#define ADC_DR MMIO32(ADC1_BASE + 0x4CUL)
+#define ADC2_SR MMIO32(ADC2_BASE + 0x00UL)
+#define ADC2_CR1 MMIO32(ADC2_BASE + 0x04UL)
+#define ADC2_CR2 MMIO32(ADC2_BASE + 0x08UL)
+#define ADC2_SMPR1 MMIO32(ADC2_BASE + 0x0CUL)
+#define ADC2_SMPR2 MMIO32(ADC2_BASE + 0x10UL)
+#define ADC2_SQR1 MMIO32(ADC2_BASE + 0x2CUL)
+#define ADC2_SQR2 MMIO32(ADC2_BASE + 0x30UL)
+#define ADC2_SQR3 MMIO32(ADC2_BASE + 0x34UL)
+#define ADC2_DR MMIO32(ADC2_BASE + 0x4CUL)
+#define ADC_SR_EOC (1u << 1)
+#define ADC_SR_STRT (1u << 4)
+#define ADC_CR1_EOCIE (1u << 5)
+#define ADC_CR2_ADON (1u << 0)
+#define ADC_CR2_SWSTART (1u << 22)
+
+#define DAC_CR MMIO32(DAC_BASE + 0x00UL)
+#define DAC_SWTRIGR MMIO32(DAC_BASE + 0x04UL)
+#define DAC_DHR12R1 MMIO32(DAC_BASE + 0x08UL)
+#define DAC_DHR12L1 MMIO32(DAC_BASE + 0x0CUL)
+#define DAC_DHR8R1 MMIO32(DAC_BASE + 0x10UL)
+#define DAC_DHR12R2 MMIO32(DAC_BASE + 0x14UL)
+#define DAC_DHR12L2 MMIO32(DAC_BASE + 0x18UL)
+#define DAC_DHR8R2 MMIO32(DAC_BASE + 0x1CUL)
+#define DAC_DHR12RD MMIO32(DAC_BASE + 0x20UL)
+#define DAC_DHR12LD MMIO32(DAC_BASE + 0x24UL)
+#define DAC_DHR8RD MMIO32(DAC_BASE + 0x28UL)
+#define DAC_DOR1 MMIO32(DAC_BASE + 0x2CUL)
+#define DAC_DOR2 MMIO32(DAC_BASE + 0x30UL)
+#define DAC_CR_EN1 (1u << 0)
+#define DAC_CR_BOFF1 (1u << 1)
+#define DAC_CR_TEN1 (1u << 2)
+#define DAC_CR_TSEL1_MASK (0x7u << 3)
+#define DAC_CR_WAVE1_MASK (0x3u << 6)
+#define DAC_CR_MAMP1_MASK (0xFu << 8)
+#define DAC_CR_EN2 (1u << 16)
+#define DAC_CR_BOFF2 (1u << 17)
+#define DAC_CR_TEN2 (1u << 18)
+#define DAC_CR_TSEL2_MASK (0x7u << 19)
+#define DAC_CR_WAVE2_MASK (0x3u << 22)
+#define DAC_CR_MAMP2_MASK (0xFu << 24)
+#define DAC_CR_RW_MASK (DAC_CR_EN1 | DAC_CR_BOFF1 | DAC_CR_TEN1 | DAC_CR_TSEL1_MASK | \
+                        DAC_CR_WAVE1_MASK | DAC_CR_MAMP1_MASK | DAC_CR_EN2 | DAC_CR_BOFF2 | \
+                        DAC_CR_TEN2 | DAC_CR_TSEL2_MASK | DAC_CR_WAVE2_MASK | DAC_CR_MAMP2_MASK)
+#define DAC_SWTRIGR_SWTRIG1 (1u << 0)
+#define DAC_SWTRIGR_SWTRIG2 (1u << 1)
+
+#define CAN1_MCR MMIO32(CAN1_BASE + 0x00UL)
+#define CAN1_MSR MMIO32(CAN1_BASE + 0x04UL)
+#define CAN1_TSR MMIO32(CAN1_BASE + 0x08UL)
+#define CAN1_RF0R MMIO32(CAN1_BASE + 0x0CUL)
+#define CAN1_RF1R MMIO32(CAN1_BASE + 0x10UL)
+#define CAN1_IER MMIO32(CAN1_BASE + 0x14UL)
+#define CAN1_ESR MMIO32(CAN1_BASE + 0x18UL)
+#define CAN1_BTR MMIO32(CAN1_BASE + 0x1CUL)
+#define CAN1_TI0R MMIO32(CAN1_BASE + 0x180UL)
+#define CAN1_TDT0R MMIO32(CAN1_BASE + 0x184UL)
+#define CAN1_TDL0R MMIO32(CAN1_BASE + 0x188UL)
+#define CAN1_TDH0R MMIO32(CAN1_BASE + 0x18CUL)
+#define CAN1_RI0R MMIO32(CAN1_BASE + 0x1B0UL)
+#define CAN1_RDT0R MMIO32(CAN1_BASE + 0x1B4UL)
+#define CAN1_RDL0R MMIO32(CAN1_BASE + 0x1B8UL)
+#define CAN1_RDH0R MMIO32(CAN1_BASE + 0x1BCUL)
+#define CAN_MCR_INRQ (1u << 0)
+#define CAN_MCR_SLEEP (1u << 1)
+#define CAN_MCR_TXFP (1u << 2)
+#define CAN_MCR_RFLM (1u << 3)
+#define CAN_MCR_NART (1u << 4)
+#define CAN_MCR_AWUM (1u << 5)
+#define CAN_MCR_ABOM (1u << 6)
+#define CAN_MCR_TTCM (1u << 7)
+#define CAN_MCR_RW_MASK (CAN_MCR_INRQ | CAN_MCR_SLEEP | CAN_MCR_TXFP | CAN_MCR_RFLM | \
+                         CAN_MCR_NART | CAN_MCR_AWUM | CAN_MCR_ABOM | CAN_MCR_TTCM)
+#define CAN_TSR_RQCP0 (1u << 0)
+#define CAN_TSR_TXOK0 (1u << 1)
+#define CAN_TSR_TME0 (1u << 26)
+#define CAN_TSR_TME1 (1u << 27)
+#define CAN_TSR_TME2 (1u << 28)
+#define CAN_IER_TMEIE (1u << 0)
+#define CAN_IER_FMPIE0 (1u << 1)
+#define CAN_IER_FFIE0 (1u << 2)
+#define CAN_IER_FOVIE0 (1u << 3)
+#define CAN_IER_ERRIE (1u << 15)
+#define CAN_IER_WKUIE (1u << 16)
+#define CAN_IER_BOFIE (1u << 17)
+#define CAN_IER_EPVIE (1u << 18)
+#define CAN_IER_EWGIE (1u << 19)
+#define CAN_TIR_TXRQ (1u << 0)
 
 #define I2C0_CR1 MMIO32(I2C0_BASE + 0x00UL)
 #define I2C0_CR2 MMIO32(I2C0_BASE + 0x04UL)
@@ -88,14 +334,178 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 
 #define PLIC_BASE 0x40000000UL
 #define PLIC_PRIO(n) MMIO32(PLIC_BASE + (n) * 4UL)
+#define PLIC_PENDING0 MMIO32(PLIC_BASE + 0x1000UL)
 #define PLIC_ENABLE_HART0(n) MMIO32(PLIC_BASE + 0x2000UL + (((n) / 32u) * 4UL))
 #define PLIC_THRESHOLD_HART0 MMIO32(PLIC_BASE + 0x200000UL)
 #define PLIC_CLAIM_HART0 MMIO32(PLIC_BASE + 0x200004UL)
 
+#define IRQ_FLASH 23u
 #define IRQ_I2C0_EV 1u
 #define IRQ_I2C0_ER 2u
 #define IRQ_I2C1_EV 3u
 #define IRQ_I2C1_ER 4u
+#define IRQ_EXTI1 6u
+#define IRQ_DMA1_CH1 7u
+#define IRQ_ADC1_2 24u
+#define IRQ_CAN1_TX 25u
+#define IRQ_CAN1_RX0 26u
+#define IRQ_CAN1_RX1 27u
+#define IRQ_CAN1_SCE 28u
+#define IRQ_RTC 16u
+#define IRQ_TIM1_UP 17u
+#define IRQ_TIM2_UP 18u
+#define IRQ_WWDG 22u
+
+#define WWDG_BASE 0x41002C00UL
+#define WWDG_CR MMIO32(WWDG_BASE + 0x00UL)
+#define WWDG_CFR MMIO32(WWDG_BASE + 0x04UL)
+#define WWDG_SR MMIO32(WWDG_BASE + 0x08UL)
+#define WWDG_CR_T_MASK 0x7Fu
+#define WWDG_CR_WDGA (1u << 7)
+#define WWDG_CFR_W_MASK 0x7Fu
+#define WWDG_CFR_WDGTB_MASK (0x3u << 7)
+#define WWDG_CFR_EWI (1u << 9)
+#define WWDG_SR_EWIF (1u << 0)
+
+#define IWDG_BASE 0x41003000UL
+#define IWDG_KR MMIO32(IWDG_BASE + 0x00UL)
+#define IWDG_PR MMIO32(IWDG_BASE + 0x04UL)
+#define IWDG_RLR MMIO32(IWDG_BASE + 0x08UL)
+#define IWDG_SR MMIO32(IWDG_BASE + 0x0CUL)
+#define IWDG_KR_START 0xCCCCu
+#define IWDG_KR_RELOAD 0xAAAAu
+#define IWDG_KR_UNLOCK 0x5555u
+#define IWDG_PR_MASK 0x7u
+#define IWDG_RLR_MASK 0x0FFFu
+
+#define DMA1_BASE 0x41020000UL
+#define DMA1_ISR MMIO32(DMA1_BASE + 0x00UL)
+#define DMA1_IFCR MMIO32(DMA1_BASE + 0x04UL)
+#define DMA1_CCR1 MMIO32(DMA1_BASE + 0x08UL)
+#define DMA1_CNDTR1 MMIO32(DMA1_BASE + 0x0CUL)
+#define DMA1_CPAR1 MMIO32(DMA1_BASE + 0x10UL)
+#define DMA1_CMAR1 MMIO32(DMA1_BASE + 0x14UL)
+
+#define CRC_BASE 0x41023000UL
+#define CRC_DR MMIO32(CRC_BASE + 0x00UL)
+#define CRC_IDR MMIO32(CRC_BASE + 0x04UL)
+#define CRC_CR MMIO32(CRC_BASE + 0x08UL)
+
+#define SPI1_BASE 0x41013000UL
+#define SPI2_BASE 0x41003800UL
+#define SPI1_CR1 MMIO32(SPI1_BASE + 0x00UL)
+#define SPI1_CR2 MMIO32(SPI1_BASE + 0x04UL)
+#define SPI1_SR MMIO32(SPI1_BASE + 0x08UL)
+#define SPI1_DR MMIO32(SPI1_BASE + 0x0CUL)
+#define SPI1_CRCPR MMIO32(SPI1_BASE + 0x10UL)
+#define SPI1_RXCRCR MMIO32(SPI1_BASE + 0x14UL)
+#define SPI1_TXCRCR MMIO32(SPI1_BASE + 0x18UL)
+#define SPI1_I2SCFGR MMIO32(SPI1_BASE + 0x1CUL)
+#define SPI1_I2SPR MMIO32(SPI1_BASE + 0x20UL)
+#define SPI2_CR1 MMIO32(SPI2_BASE + 0x00UL)
+#define SPI2_CR2 MMIO32(SPI2_BASE + 0x04UL)
+#define SPI2_SR MMIO32(SPI2_BASE + 0x08UL)
+#define SPI2_DR MMIO32(SPI2_BASE + 0x0CUL)
+#define SPI2_CRCPR MMIO32(SPI2_BASE + 0x10UL)
+#define SPI2_RXCRCR MMIO32(SPI2_BASE + 0x14UL)
+#define SPI2_TXCRCR MMIO32(SPI2_BASE + 0x18UL)
+#define SPI2_I2SCFGR MMIO32(SPI2_BASE + 0x1CUL)
+#define SPI2_I2SPR MMIO32(SPI2_BASE + 0x20UL)
+
+#define USART1_BASE 0x41013800UL
+#define USART2_BASE 0x41004400UL
+#define USART1_SR MMIO32(USART1_BASE + 0x00UL)
+#define USART1_DR MMIO32(USART1_BASE + 0x04UL)
+#define USART1_BRR MMIO32(USART1_BASE + 0x08UL)
+#define USART1_CR1 MMIO32(USART1_BASE + 0x0CUL)
+#define USART1_CR2 MMIO32(USART1_BASE + 0x10UL)
+#define USART1_CR3 MMIO32(USART1_BASE + 0x14UL)
+#define USART1_GTPR MMIO32(USART1_BASE + 0x18UL)
+#define USART2_SR MMIO32(USART2_BASE + 0x00UL)
+#define USART2_DR MMIO32(USART2_BASE + 0x04UL)
+#define USART2_BRR MMIO32(USART2_BASE + 0x08UL)
+#define USART2_CR1 MMIO32(USART2_BASE + 0x0CUL)
+#define USART2_CR2 MMIO32(USART2_BASE + 0x10UL)
+#define USART2_CR3 MMIO32(USART2_BASE + 0x14UL)
+#define USART2_GTPR MMIO32(USART2_BASE + 0x18UL)
+
+#define DMA_ISR_GIF1 (1u << 0)
+#define DMA_ISR_TCIF1 (1u << 1)
+#define DMA_ISR_HTIF1 (1u << 2)
+#define DMA_ISR_TEIF1 (1u << 3)
+
+#define DMA_IFCR_CGIF1 (1u << 0)
+#define DMA_IFCR_CTCIF1 (1u << 1)
+#define DMA_IFCR_CHTIF1 (1u << 2)
+#define DMA_IFCR_CTEIF1 (1u << 3)
+
+#define DMA_CCR_EN (1u << 0)
+#define DMA_CCR_TCIE (1u << 1)
+#define DMA_CCR_TEIE (1u << 3)
+#define DMA_CCR_DIR (1u << 4)
+#define DMA_CCR_CIRC (1u << 5)
+#define DMA_CCR_PINC (1u << 6)
+#define DMA_CCR_MINC (1u << 7)
+#define DMA_CCR_PSIZE_32 (2u << 8)
+#define DMA_CCR_MSIZE_32 (2u << 10)
+#define DMA_CCR_MEM2MEM (1u << 14)
+
+#define USART_SR_PE (1u << 0)
+#define USART_SR_FE (1u << 1)
+#define USART_SR_NE (1u << 2)
+#define USART_SR_ORE (1u << 3)
+#define USART_SR_IDLE (1u << 4)
+#define USART_SR_RXNE (1u << 5)
+#define USART_SR_TC (1u << 6)
+#define USART_SR_TXE (1u << 7)
+
+#define USART_CR1_RE (1u << 2)
+#define USART_CR1_TE (1u << 3)
+#define USART_CR1_IDLEIE (1u << 4)
+#define USART_CR1_RXNEIE (1u << 5)
+#define USART_CR1_TCIE (1u << 6)
+#define USART_CR1_TXEIE (1u << 7)
+#define USART_CR1_PEIE (1u << 8)
+#define USART_CR1_UE (1u << 13)
+#define USART_CR1_RW_MASK (USART_CR1_RE | USART_CR1_TE | USART_CR1_IDLEIE | USART_CR1_RXNEIE | \
+                           USART_CR1_TCIE | USART_CR1_TXEIE | USART_CR1_PEIE | USART_CR1_UE)
+#define USART_CR2_RW_MASK 0xFFFFu
+#define USART_CR3_RW_MASK 0x04FFu
+#define USART_GTPR_RW_MASK 0xFFFFu
+
+#define IRQ_USART1 14u
+#define IRQ_USART2 15u
+
+#define SPI_SR_RXNE (1u << 0)
+#define SPI_SR_TXE (1u << 1)
+#define SPI_SR_OVR (1u << 6)
+#define SPI_CR1_CPHA (1u << 0)
+#define SPI_CR1_CPOL (1u << 1)
+#define SPI_CR1_MSTR (1u << 2)
+#define SPI_CR1_BR_MASK (0x7u << 3)
+#define SPI_CR1_SPE (1u << 6)
+#define SPI_CR1_LSBFIRST (1u << 7)
+#define SPI_CR1_SSI (1u << 8)
+#define SPI_CR1_SSM (1u << 9)
+#define SPI_CR1_RXONLY (1u << 10)
+#define SPI_CR1_DFF (1u << 11)
+#define SPI_CR1_CRCNEXT (1u << 12)
+#define SPI_CR1_CRCEN (1u << 13)
+#define SPI_CR1_BIDIOE (1u << 14)
+#define SPI_CR1_BIDIMODE (1u << 15)
+#define SPI_CR1_RW_MASK (SPI_CR1_CPHA | SPI_CR1_CPOL | SPI_CR1_MSTR | SPI_CR1_BR_MASK | SPI_CR1_SPE | \
+                         SPI_CR1_LSBFIRST | SPI_CR1_SSI | SPI_CR1_SSM | SPI_CR1_RXONLY | SPI_CR1_DFF | \
+                         SPI_CR1_CRCNEXT | SPI_CR1_CRCEN | SPI_CR1_BIDIOE | SPI_CR1_BIDIMODE)
+#define SPI_CR2_SSOE (1u << 2)
+#define SPI_CR2_ERRIE (1u << 5)
+#define SPI_CR2_RXNEIE (1u << 6)
+#define SPI_CR2_TXEIE (1u << 7)
+#define SPI_CR2_RW_MASK (SPI_CR2_SSOE | SPI_CR2_ERRIE | SPI_CR2_RXNEIE | SPI_CR2_TXEIE)
+#define SPI_IRQ1 5u
+#define SPI_IRQ2 8u
+
+#define GPIO_CRL_OUT_2MHZ_PP 0x2u
+#define GPIO_CRL_IN_FLOATING 0x4u
 
 #define I2C0_SLAVE_ADDR 0x50u
 #define I2C1_SLAVE_ADDR 0x51u
@@ -110,6 +520,8 @@ typedef struct {
 
 volatile I2cIrqEvent g_log[LOG_SIZE];
 volatile unsigned int g_log_count = 0u;
+static volatile uint32_t g_dma_src_words[2];
+static volatile uint32_t g_dma_dst_words[2];
 static int g_pass = 0;
 static int g_fail = 0;
 
@@ -323,6 +735,9 @@ static void setup_trap_handler(void);
 static void setup_plic(void);
 static void enable_irq(void);
 static void i2c_init(void);
+static void gpio_exti_init(void);
+static void usart_init(void);
+static void spi_init(void);
 static void i2c_stop(void);
 static void i2c_start(void);
 static void i2c_write_addr(unsigned int addr, unsigned int read);
@@ -354,12 +769,33 @@ static void setup_trap_handler(void)
 
 static void setup_plic(void)
 {
+	PLIC_PRIO(IRQ_FLASH) = 1u;
 	PLIC_PRIO(IRQ_I2C0_EV) = 1u;
 	PLIC_PRIO(IRQ_I2C0_ER) = 1u;
 	PLIC_PRIO(IRQ_I2C1_EV) = 1u;
 	PLIC_PRIO(IRQ_I2C1_ER) = 1u;
+	PLIC_PRIO(IRQ_EXTI1) = 1u;
+	PLIC_PRIO(IRQ_DMA1_CH1) = 1u;
+	PLIC_PRIO(SPI_IRQ1) = 1u;
+	PLIC_PRIO(SPI_IRQ2) = 1u;
+	PLIC_PRIO(IRQ_USART1) = 1u;
+	PLIC_PRIO(IRQ_USART2) = 1u;
+	PLIC_PRIO(IRQ_ADC1_2) = 1u;
+	PLIC_PRIO(IRQ_CAN1_TX) = 1u;
+	PLIC_PRIO(IRQ_CAN1_RX0) = 1u;
+	PLIC_PRIO(IRQ_CAN1_RX1) = 1u;
+	PLIC_PRIO(IRQ_CAN1_SCE) = 1u;
+	PLIC_PRIO(IRQ_RTC) = 1u;
+	PLIC_PRIO(IRQ_TIM1_UP) = 1u;
+	PLIC_PRIO(IRQ_TIM2_UP) = 1u;
+	PLIC_PRIO(IRQ_WWDG) = 1u;
 	PLIC_ENABLE_HART0(IRQ_I2C0_EV) = (1u << IRQ_I2C0_EV) | (1u << IRQ_I2C0_ER) | (1u << IRQ_I2C1_EV) |
-	                                  (1u << IRQ_I2C1_ER);
+	                                  (1u << IRQ_I2C1_ER) | (1u << IRQ_EXTI1) | (1u << IRQ_DMA1_CH1) |
+	                                  (1u << SPI_IRQ1) | (1u << SPI_IRQ2) | (1u << IRQ_USART1) |
+	                                  (1u << IRQ_USART2) | (1u << IRQ_RTC) | (1u << IRQ_TIM1_UP) |
+	                                  (1u << IRQ_TIM2_UP) | (1u << IRQ_WWDG) | (1u << IRQ_FLASH) |
+	                                  (1u << IRQ_ADC1_2) | (1u << IRQ_CAN1_TX) | (1u << IRQ_CAN1_RX0) |
+	                                  (1u << IRQ_CAN1_RX1) | (1u << IRQ_CAN1_SCE);
 	PLIC_THRESHOLD_HART0 = 0u;
 }
 
@@ -371,6 +807,7 @@ static void enable_irq(void)
 
 static void i2c_init(void)
 {
+	RCC_APB1ENR |= RCC_APB1_I2C1 | RCC_APB1_I2C2;
 	I2C0_CR1 = CR1_SWRST;
 	I2C0_CR1 = 0u;
 	I2C0_CR2 = 36u | CR2_ITEVTEN | CR2_ITBUFEN | CR2_ITERREN;
@@ -386,6 +823,661 @@ static void i2c_init(void)
 	I2C1_CCR = 4000u;
 	I2C1_TRISE = 37u;
 	I2C1_CR1 = CR1_PE | CR1_ACK;
+}
+
+static void gpio_exti_init(void)
+{
+	RCC_APB2ENR |= RCC_APB2_AFIO | RCC_APB2_GPIOA | RCC_APB2_GPIOB;
+
+	AFIO_EXTICR1 = (AFIO_EXTICR1 & ~(0xFu << 4u)) | (1u << 4u);
+	EXTI_IMR |= 1u << 1u;
+	EXTI_RTSR |= 1u << 1u;
+	EXTI_FTSR &= ~(1u << 1u);
+	EXTI_PR = 1u << 1u;
+
+	GPIOA_CRL = (GPIOA_CRL & ~0xFu) | GPIO_CRL_OUT_2MHZ_PP;
+	GPIOB_CRL = (GPIOB_CRL & ~(0xFu << 4u)) | (GPIO_CRL_IN_FLOATING << 4u);
+	GPIOA_BRR = 1u << 0u;
+	GPIOB_BRR = 1u << 1u;
+}
+
+static void test_rcc(void)
+{
+	put_str("\r\n--- RCC Clock and Reset Test ---\r\n");
+
+	if (!expect_eq("RCC-001.CR", RCC_CR, 0x00000083u)) return;
+	if (!expect_eq("RCC-001.CFGR", RCC_CFGR, 0u)) return;
+	if (!expect_eq("RCC-001.AHBENR", RCC_AHBENR, 0x00000014u)) return;
+	if (!expect_eq("RCC-001.APB1ENR", RCC_APB1ENR, 0u)) return;
+	if (!expect_eq("RCC-001.CSR", RCC_CSR, 0x0C000000u)) return;
+	pass_test("RCC-001: RM0008 reset values");
+
+	RCC_CR = 0x00000083u | RCC_CR_HSEON | RCC_CR_PLLON;
+	if (!expect_mask("RCC-002.CR", RCC_CR,
+	                 RCC_CR_HSION | RCC_CR_HSIRDY | RCC_CR_HSEON | RCC_CR_HSERDY |
+	                     RCC_CR_PLLON | RCC_CR_PLLRDY,
+	                 RCC_CR_HSION | RCC_CR_HSIRDY | RCC_CR_HSEON | RCC_CR_HSERDY |
+	                     RCC_CR_PLLON | RCC_CR_PLLRDY))
+		return;
+	RCC_CFGR = 1u;
+	if (!expect_eq("RCC-002.CFGR", RCC_CFGR & 0xFu, 0x5u)) return;
+	pass_test("RCC-002: oscillator ready and system-clock status");
+
+	RCC_APB1ENR = 0xFFFFFFFFu;
+	RCC_APB2ENR = 0xFFFFFFFFu;
+	if (!expect_eq("RCC-003.APB1", RCC_APB1ENR, 0x3AFEC9FFu)) return;
+	if (!expect_eq("RCC-003.APB2", RCC_APB2ENR, 0x0038FFFDu)) return;
+	RCC_CSR = 1u << 24;
+	if (!expect_eq("RCC-003.CSR_FLAGS", RCC_CSR & 0xFC000000u, 0u)) return;
+	pass_test("RCC-003: writable masks and reset-flag clear");
+
+	RCC_APB1ENR = 0u;
+	RCC_APB2ENR = 0u;
+	RCC_CFGR = 0u;
+	RCC_CR = 0x00000083u;
+}
+
+static void test_gpio_exti(void)
+{
+	put_str("\r\n--- GPIO and EXTI Loopback Test ---\r\n");
+	I2cMonitor mon;
+
+	gpio_exti_init();
+	i2c_clear_log();
+	monitor_begin(&mon);
+	GPIOA_BSRR = 1u << 0u;
+	if (!i2c_wait_n(mon.from + 1u)) {
+		fail_test("GPIO-001", "EXTI timeout");
+		return;
+	}
+	if (!expect_eq("GPIO-001.IRQ", g_log[mon.from].irq_id, IRQ_EXTI1)) return;
+	if (!expect_eq("GPIO-001.PR", g_log[mon.from].sr1 & (1u << 1u), 1u << 1u)) return;
+	if (!expect_eq("GPIO-001.CLEAR", EXTI_PR & (1u << 1u), 0u)) return;
+	if (!expect_eq("GPIO-001.IDR", GPIOB_IDR & (1u << 1u), 1u << 1u)) return;
+	pass_test("GPIO-001: A0 drives B1 and raises EXTI1");
+
+	EXTI_FTSR |= 1u << 1u;
+	monitor_begin(&mon);
+	GPIOA_BRR = 1u << 0u;
+	if (!i2c_wait_n(mon.from + 1u)) {
+		fail_test("GPIO-002", "falling edge EXTI timeout");
+		return;
+	}
+	if (!expect_eq("GPIO-002.IRQ", g_log[mon.from].irq_id, IRQ_EXTI1)) return;
+	if (!expect_eq("GPIO-002.IDR", GPIOB_IDR & (1u << 1u), 0u)) return;
+	pass_test("GPIO-002: falling edge propagates through loopback");
+}
+
+static void usart_init(void)
+{
+	RCC_APB2ENR |= RCC_APB2_USART1;
+	RCC_APB1ENR |= RCC_APB1_USART2;
+
+	USART1_CR1 = USART_CR1_UE | USART_CR1_RE | USART_CR1_TE | USART_CR1_RXNEIE | USART_CR1_TCIE |
+	             USART_CR1_TXEIE;
+	USART1_BRR = 0x1A1u;
+	USART1_CR2 = 0u;
+	USART1_CR3 = 0u;
+	USART1_GTPR = 0u;
+
+	USART2_CR1 = USART_CR1_UE | USART_CR1_RE | USART_CR1_TE | USART_CR1_RXNEIE | USART_CR1_TCIE |
+	             USART_CR1_TXEIE;
+	USART2_BRR = 0x1A1u;
+	USART2_CR2 = 0u;
+	USART2_CR3 = 0u;
+	USART2_GTPR = 0u;
+}
+
+static void spi_init(void)
+{
+	RCC_APB2ENR |= RCC_APB2_SPI1;
+	RCC_APB1ENR |= RCC_APB1_SPI2;
+
+	SPI1_CR1 = SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI | SPI_CR1_SPE;
+	SPI1_CR2 = SPI_CR2_RXNEIE | SPI_CR2_TXEIE;
+	SPI1_CRCPR = 7u;
+	SPI1_RXCRCR = 0u;
+	SPI1_TXCRCR = 0u;
+	SPI1_I2SCFGR = 0u;
+	SPI1_I2SPR = 0u;
+
+	SPI2_CR1 = SPI_CR1_SSM | SPI_CR1_SSI;
+	SPI2_CR2 = SPI_CR2_RXNEIE | SPI_CR2_TXEIE;
+	SPI2_CRCPR = 7u;
+	SPI2_RXCRCR = 0u;
+	SPI2_TXCRCR = 0u;
+	SPI2_I2SCFGR = 0u;
+	SPI2_I2SPR = 0u;
+}
+
+static uint32_t crc_reference_update(uint32_t crc, uint8_t byte)
+{
+	crc ^= (uint32_t)byte << 24u;
+	for (unsigned i = 0u; i < 8u; ++i) {
+		if ((crc & 0x80000000u) != 0u) {
+			crc = (crc << 1u) ^ 0x04C11DB7u;
+		} else {
+			crc <<= 1u;
+		}
+	}
+	return crc;
+}
+
+static uint32_t crc_reference_word(uint32_t crc, uint32_t word)
+{
+	const uint8_t *bytes = (const uint8_t *)&word;
+	for (unsigned i = 0u; i < 4u; ++i) {
+		crc = crc_reference_update(crc, bytes[i]);
+	}
+	return crc;
+}
+
+static void test_spi(void)
+{
+	put_str("\r\n--- SPI Register and Loopback Test ---\r\n");
+	unsigned int from;
+
+	spi_init();
+	if (!expect_eq("SPI-001.SR", SPI1_SR, SPI_SR_TXE)) return;
+	if (!expect_eq("SPI-001.CR1", SPI1_CR1, SPI_CR1_MSTR | SPI_CR1_SSM | SPI_CR1_SSI | SPI_CR1_SPE)) return;
+	pass_test("SPI-001: initialized register defaults");
+
+	SPI1_CR1 = 0xFFFFFFFFu;
+	SPI1_CR2 = 0xFFFFFFFFu;
+	SPI1_CRCPR = 0xFFFFFFFFu;
+	SPI1_I2SCFGR = 0xFFFFFFFFu;
+	SPI1_I2SPR = 0xFFFFFFFFu;
+	if (!expect_eq("SPI-002.CR1", SPI1_CR1, SPI_CR1_RW_MASK)) return;
+	if (!expect_eq("SPI-002.CR2", SPI1_CR2, SPI_CR2_RW_MASK)) return;
+	if (!expect_eq("SPI-002.CRCPR", SPI1_CRCPR, 0xFFFFu)) return;
+	if (!expect_eq("SPI-002.I2SCFGR", SPI1_I2SCFGR, 0x0FFFu)) return;
+	if (!expect_eq("SPI-002.I2SPR", SPI1_I2SPR, 0x03FFu)) return;
+	pass_test("SPI-002: writable masks");
+
+	RCC_APB2ENR &= ~RCC_APB2_SPI1;
+	if (!expect_eq("SPI-003.GATED", SPI1_SR, 0u)) return;
+	SPI1_CR1 = 0u;
+	RCC_APB2ENR |= RCC_APB2_SPI1;
+	if (!expect_eq("SPI-003.RETAIN", SPI1_CR1, SPI_CR1_RW_MASK)) return;
+	RCC_APB2RSTR = RCC_APB2_SPI1;
+	RCC_APB2RSTR = 0u;
+	if (!expect_eq("SPI-003.RESET", SPI1_CR1, 0u)) return;
+	if (!expect_eq("SPI-003.RESET_SR", SPI1_SR, SPI_SR_TXE)) return;
+	pass_test("SPI-003: APB gate and reset");
+
+	spi_init();
+	i2c_clear_log();
+	from = g_log_count;
+	SPI2_DR = 0x5Au;
+	SPI2_CR1 |= SPI_CR1_SPE;
+	SPI1_DR = 0xA5u;
+	if (!i2c_wait_n(from + 2u)) {
+		fail_test("SPI-004", "loopback timeout");
+		return;
+	}
+	int tx_idx = i2c_find(from, SPI_IRQ1, SPI_SR_RXNE | SPI_SR_TXE);
+	int rx_idx = i2c_find(from, SPI_IRQ2, SPI_SR_RXNE);
+	if (!expect_true("SPI-004", tx_idx >= 0, "master interrupt missing")) return;
+	if (!expect_true("SPI-004", rx_idx >= 0, "slave interrupt missing")) return;
+	if (!expect_eq("SPI-004.MASTER_RX", g_log[tx_idx].sr2 & 0xFFu, 0x5Au)) return;
+	if (!expect_eq("SPI-004.SLAVE_RX", g_log[rx_idx].sr2 & 0xFFu, 0xA5u)) return;
+	pass_test("SPI-004: byte loopback with interrupts");
+}
+
+static void test_usart(void)
+{
+	put_str("\r\n--- USART Register and Loopback Test ---\r\n");
+	unsigned int from;
+
+	usart_init();
+	if (!expect_eq("USART-001.SR", USART1_SR, USART_SR_TXE | USART_SR_TC)) return;
+	if (!expect_eq("USART-001.CR1", USART1_CR1,
+	               USART_CR1_UE | USART_CR1_RE | USART_CR1_TE | USART_CR1_RXNEIE | USART_CR1_TCIE |
+	                   USART_CR1_TXEIE))
+		return;
+	if (!expect_eq("USART-001.BRR", USART1_BRR, 0x1A1u)) return;
+	pass_test("USART-001: initialized register defaults");
+
+	USART1_CR1 = 0xFFFFFFFFu;
+	USART1_CR2 = 0xFFFFFFFFu;
+	USART1_CR3 = 0xFFFFFFFFu;
+	USART1_GTPR = 0xFFFFFFFFu;
+	if (!expect_eq("USART-002.CR1", USART1_CR1, USART_CR1_RW_MASK)) return;
+	if (!expect_eq("USART-002.CR2", USART1_CR2, USART_CR2_RW_MASK)) return;
+	if (!expect_eq("USART-002.CR3", USART1_CR3, USART_CR3_RW_MASK)) return;
+	if (!expect_eq("USART-002.GTPR", USART1_GTPR, USART_GTPR_RW_MASK)) return;
+	pass_test("USART-002: writable masks");
+
+	RCC_APB2ENR &= ~RCC_APB2_USART1;
+	if (!expect_eq("USART-003.GATED", USART1_SR, 0u)) return;
+	USART1_CR1 = 0u;
+	RCC_APB2ENR |= RCC_APB2_USART1;
+	if (!expect_eq("USART-003.RETAIN", USART1_CR1, USART_CR1_RW_MASK)) return;
+	RCC_APB2RSTR = RCC_APB2_USART1;
+	RCC_APB2RSTR = 0u;
+	if (!expect_eq("USART-003.RESET", USART1_CR1, 0u)) return;
+	if (!expect_eq("USART-003.RESET_SR", USART1_SR, USART_SR_TXE | USART_SR_TC)) return;
+	pass_test("USART-003: APB gate and reset");
+
+	usart_init();
+	i2c_clear_log();
+	from = g_log_count;
+	USART1_DR = 0xA5u;
+	if (!i2c_wait_n(from + 2u)) {
+		fail_test("USART-004", "loopback timeout");
+		return;
+	}
+	int tx_idx = i2c_find(from, IRQ_USART1, USART_SR_TXE | USART_SR_TC);
+	int rx_idx = i2c_find(from, IRQ_USART2, USART_SR_RXNE);
+	if (!expect_true("USART-004", tx_idx >= 0, "sender interrupt missing")) return;
+	if (!expect_true("USART-004", rx_idx >= 0, "receiver interrupt missing")) return;
+	if (!expect_eq("USART-004.DATA", g_log[rx_idx].sr2 & 0xFFu, 0xA5u)) return;
+	if (!expect_eq("USART-004.SR", USART2_SR & USART_SR_RXNE, 0u)) return;
+	pass_test("USART-004: byte loopback with interrupts");
+}
+
+static void test_dma_crc(void)
+{
+	put_str("\r\n--- DMA and CRC Test ---\r\n");
+	I2cMonitor mon;
+	(void)mon;
+	uintptr_t dma_src = (uintptr_t)&g_dma_src_words[0];
+	uintptr_t dma_dst = (uintptr_t)&g_dma_dst_words[0];
+
+	RCC_AHBENR |= RCC_AHB_DMA1 | RCC_AHB_CRC;
+	i2c_clear_log();
+	DMA1_IFCR = DMA_IFCR_CGIF1 | DMA_IFCR_CTCIF1 | DMA_IFCR_CHTIF1 | DMA_IFCR_CTEIF1;
+	DMA1_CPAR1 = (uint32_t)dma_src;
+	DMA1_CMAR1 = (uint32_t)dma_dst;
+	DMA1_CNDTR1 = 2u;
+	g_dma_src_words[0] = 0x11223344u;
+	g_dma_src_words[1] = 0x55667788u;
+	g_dma_dst_words[0] = 0u;
+	g_dma_dst_words[1] = 0u;
+
+	DMA1_CCR1 = DMA_CCR_MEM2MEM | DMA_CCR_MINC | DMA_CCR_PINC | DMA_CCR_MSIZE_32 |
+	            DMA_CCR_PSIZE_32 | DMA_CCR_TCIE | DMA_CCR_EN;
+	if (!i2c_wait_n(1u)) {
+		fail_test("DMA-001", "DMA completion interrupt timeout");
+		return;
+	}
+	if (!expect_eq("DMA-001.IRQ", g_log[0].irq_id, IRQ_DMA1_CH1)) return;
+	if (!expect_true("DMA-001", (g_log[0].sr1 & DMA_ISR_TCIF1) != 0u, "TCIF missing in interrupt log")) return;
+	if (!expect_eq("DMA-001.DST0", g_dma_dst_words[0], 0x11223344u)) return;
+	if (!expect_eq("DMA-001.DST1", g_dma_dst_words[1], 0x55667788u)) return;
+	pass_test("DMA-001: DMA1 channel 1 mem2mem copy and interrupt");
+
+	CRC_CR = 1u;
+	if (!expect_eq("CRC-001.RESET", CRC_DR, 0xFFFFFFFFu)) return;
+	CRC_IDR = 0xA5u;
+	if (!expect_eq("CRC-001.IDR", CRC_IDR & 0xFFu, 0xA5u)) return;
+	uint32_t expected = 0xFFFFFFFFu;
+	expected = crc_reference_word(expected, 0x01020304u);
+	expected = crc_reference_word(expected, 0xA0B0C0D0u);
+	CRC_DR = 0x01020304u;
+	CRC_DR = 0xA0B0C0D0u;
+	if (!expect_eq("CRC-001.VALUE", CRC_DR, expected)) return;
+	pass_test("CRC-001: reset, IDR, and CRC accumulation");
+}
+
+static void test_backup_domain(void)
+{
+	put_str("\r\n--- Backup Domain and RTC Test ---\r\n");
+
+	if (!expect_eq("BD-001.PWR", PWR_CR, 0u)) return;
+	if (!expect_eq("BD-001.BKP", BKP_DR1, 0u)) return;
+	if (!expect_eq("BD-001.RTC", RTC_CRL, 0u)) return;
+	pass_test("BD-001: reset values");
+
+	RCC_APB1ENR |= RCC_APB1_BKP | RCC_APB1_PWR;
+	BKP_DR1 = 0x11223344u;
+	BKP_DR10 = 0x55667788u;
+	BKP_DR11 = 0xAABBCCDDu;
+	BKP_DR42 = 0x10203040u;
+	if (!expect_eq("BD-002.GATED", BKP_DR1, 0u)) return;
+	if (!expect_eq("BD-002.GATED10", BKP_DR10, 0u)) return;
+	if (!expect_eq("BD-002.GATED11", BKP_DR11, 0u)) return;
+	pass_test("BD-002: backup registers ignore writes while DBP is clear");
+
+	PWR_CR |= PWR_CR_DBP;
+	BKP_DR1 = 0x11223344u;
+	BKP_DR10 = 0x55667788u;
+	BKP_DR11 = 0xAABBCCDDu;
+	BKP_DR42 = 0x10203040u;
+	BKP_RTCCR = 0x0000005Au;
+	BKP_CR = 0x00000003u;
+	BKP_CSR = 0x00000007u;
+	if (!expect_eq("BD-003.DR1", BKP_DR1, 0x11223344u)) return;
+	if (!expect_eq("BD-003.DR10", BKP_DR10, 0x55667788u)) return;
+	if (!expect_eq("BD-003.DR11", BKP_DR11, 0xAABBCCDDu)) return;
+	if (!expect_eq("BD-003.DR42", BKP_DR42, 0x10203040u)) return;
+	if (!expect_eq("BD-003.RTCCR", BKP_RTCCR, 0x0000005Au)) return;
+	if (!expect_eq("BD-003.CR", BKP_CR, 0x00000003u)) return;
+	if (!expect_eq("BD-003.CSR", BKP_CSR, 0x00000007u)) return;
+	pass_test("BD-003: backup registers are writable when DBP is set");
+
+	PWR_CR &= ~PWR_CR_DBP;
+	BKP_DR1 = 0xDEADBEEFu;
+	if (!expect_eq("BD-004.IGNORE", BKP_DR1, 0x11223344u)) return;
+	if (!expect_eq("BD-004.IGNORE42", BKP_DR42, 0x10203040u)) return;
+	pass_test("BD-004: writes are blocked again after DBP clear");
+
+	PWR_CR |= PWR_CR_DBP;
+	RTC_CRL = 0u;
+	RTC_CRH = RTC_CRH_ALRIE;
+	RTC_PRLH = 0u;
+	RTC_PRLL = 0u;
+	RTC_DIVH = 0u;
+	RTC_DIVL = 0u;
+	RTC_CNTH = 0u;
+	RTC_CNTL = 0u;
+	RTC_ALRH = 0u;
+	RTC_ALRL = 3u;
+	if (!expect_eq("BD-005.ALRL", RTC_ALRL, 3u)) return;
+	if (!expect_eq("BD-005.CRH", RTC_CRH, RTC_CRH_ALRIE)) return;
+	RCC_BDCR = RCC_BDCR_RTCEN;
+	unsigned int cnt0 = RTC_CNTL;
+	unsigned int cnt1 = RTC_CNTL;
+	if (!expect_true("BD-005.TICK", cnt1 != cnt0, "RTC counter did not advance")) return;
+	for (unsigned int i = 0u; i < 8u; ++i) {
+		(void)RTC_CNTL;
+	}
+	if (!expect_true("BD-005.FLAG", (RTC_CRL & RTC_CRL_ALRF) != 0u, "alarm flag missing")) return;
+	RTC_CRL = RTC_CRL_ALRF | RTC_CRL_SECF;
+	if (!expect_eq("BD-005.CLEAR", RTC_CRL & (RTC_CRL_SECF | RTC_CRL_ALRF), 0u)) return;
+	pass_test("BD-005: RTC alarm flag and counter progression");
+
+	RCC_BDCR = RCC_BDCR_BDRST;
+	RCC_BDCR = RCC_BDCR_RTCEN;
+	if (!expect_eq("BD-006.DR1", BKP_DR1, 0u)) return;
+	if (!expect_eq("BD-006.DR42", BKP_DR42, 0u)) return;
+	if (!expect_eq("BD-006.RTCCR", BKP_RTCCR, 0u)) return;
+	if (!expect_eq("BD-006.RTC_ALRL", RTC_ALRL, 0u)) return;
+	pass_test("BD-006: backup reset clears the backup domain");
+}
+
+static void test_timers(void)
+{
+	put_str("\r\n--- TIM1/TIM2 Update Event Test ---\r\n");
+
+	RCC_APB2ENR |= RCC_APB2_TIM1;
+	RCC_APB1ENR |= RCC_APB1_TIM2 | RCC_APB1_TIM3 | RCC_APB1_TIM4 | RCC_APB1_TIM5;
+	i2c_clear_log();
+
+	TIM1_CR1 = 0u;
+	TIM1_DIER = 0u;
+	TIM1_SR = TIM_SR_UIF;
+	TIM1_PSC = 0u;
+	TIM1_ARR = 2u;
+	TIM1_SR = TIM_SR_UIF;
+	TIM1_CR1 = TIM_CR1_CEN;
+
+	TIM2_CR1 = 0u;
+	TIM2_DIER = 0u;
+	TIM2_SR = TIM_SR_UIF;
+	TIM2_PSC = 0u;
+	TIM2_ARR = 3u;
+	TIM2_SR = TIM_SR_UIF;
+	TIM2_CR1 = TIM_CR1_CEN;
+
+	if (!expect_eq("TIM-001.TIM1_CR1", TIM1_CR1, TIM_CR1_CEN)) return;
+	if (!expect_eq("TIM-001.TIM1_ARR", TIM1_ARR, 2u)) return;
+	if (!expect_eq("TIM-001.TIM2_CR1", TIM2_CR1, TIM_CR1_CEN)) return;
+	if (!expect_eq("TIM-001.TIM2_ARR", TIM2_ARR, 3u)) return;
+	for (unsigned int i = 0u; i < 16u; ++i) {
+		(void)TIM1_CNT;
+		(void)TIM2_CNT;
+	}
+	unsigned int tim1_cnt = TIM1_CNT;
+	unsigned int tim2_cnt = TIM2_CNT;
+	if (!expect_true("TIM-001", tim1_cnt != 0u || tim2_cnt != 0u, "timers did not advance")) return;
+	if (!expect_true("TIM-001", (TIM1_SR & TIM_SR_UIF) != 0u || (TIM2_SR & TIM_SR_UIF) != 0u,
+	                 "update flags missing"))
+		return;
+	pass_test("TIM-001: TIM1 and TIM2 update-event progression");
+
+	TIM1_CR1 = TIM_CR1_CEN;
+	RCC_APB2ENR &= ~RCC_APB2_TIM1;
+	if (!expect_eq("TIM-002.GATED", TIM1_CR1, 0u)) return;
+	RCC_APB2ENR |= RCC_APB2_TIM1;
+	if (!expect_eq("TIM-002.RETAIN", TIM1_CR1, TIM_CR1_CEN)) return;
+	RCC_APB2RSTR = RCC_APB2_TIM1;
+	RCC_APB2RSTR = 0u;
+	if (!expect_eq("TIM-002.RESET_CR1", TIM1_CR1, 0u)) return;
+	if (!expect_eq("TIM-002.RESET_CNT", TIM1_CNT, 0u)) return;
+	pass_test("TIM-002: TIM1 clock gate and reset");
+}
+
+static void test_watchdogs(void)
+{
+	put_str("\r\n--- WWDG/IWDG Test ---\r\n");
+
+	RCC_APB1ENR |= RCC_APB1_WWDG;
+	WWDG_CR = 0xFFFFFFFFu;
+	WWDG_CFR = 0xFFFFFFFFu;
+	if (!expect_eq("WDG-001.CR", WWDG_CR, WWDG_CR_T_MASK | WWDG_CR_WDGA)) return;
+	if (!expect_eq("WDG-001.CFR", WWDG_CFR, WWDG_CFR_W_MASK | WWDG_CFR_WDGTB_MASK | WWDG_CFR_EWI))
+		return;
+	pass_test("WDG-001: WWDG masks");
+
+	RCC_APB1ENR &= ~RCC_APB1_WWDG;
+	if (!expect_eq("WDG-001.GATED", WWDG_CR, 0u)) return;
+	WWDG_CR = 0u;
+	RCC_APB1ENR |= RCC_APB1_WWDG;
+	if (!expect_eq("WDG-001.RETAIN", WWDG_CR, WWDG_CR_T_MASK | WWDG_CR_WDGA)) return;
+	RCC_APB1RSTR = RCC_APB1_WWDG;
+	RCC_APB1RSTR = 0u;
+	if (!expect_eq("WDG-001.RESET", WWDG_CR, WWDG_CR_T_MASK)) return;
+	pass_test("WDG-001: WWDG gate and reset");
+
+	WWDG_CR = WWDG_CR_WDGA | 0x41u;
+	WWDG_CFR = WWDG_CFR_EWI | 0x20u;
+	i2c_clear_log();
+	for (unsigned int i = 0u; i < 4u; ++i) {
+		(void)WWDG_CR;
+		(void)WWDG_SR;
+	}
+	if (!expect_true("WDG-002", (WWDG_SR & WWDG_SR_EWIF) != 0u, "WWDG early wakeup flag missing"))
+		return;
+	pass_test("WDG-002: WWDG counter progression and early wakeup flag");
+
+	IWDG_KR = IWDG_KR_UNLOCK;
+	IWDG_PR = 0xFFFFFFFFu;
+	IWDG_RLR = 0xFFFFFFFFu;
+	if (!expect_eq("WDG-003.PR", IWDG_PR, IWDG_PR_MASK)) return;
+	if (!expect_eq("WDG-003.RLR", IWDG_RLR, IWDG_RLR_MASK)) return;
+	IWDG_KR = IWDG_KR_RELOAD;
+	IWDG_KR = IWDG_KR_START;
+	if (!expect_eq("WDG-003.KR", IWDG_KR, IWDG_KR_START)) return;
+	pass_test("WDG-003: IWDG unlock and reload/start semantics");
+}
+
+static void test_flash(void)
+{
+	put_str("\r\n--- FLASH Interface Test ---\r\n");
+
+	if (!expect_eq("FL-001.ACR", FLASH_ACR, 0x30u)) return;
+	if (!expect_eq("FL-001.CR", FLASH_CR, FLASH_CR_LOCK)) return;
+	pass_test("FL-001: reset values");
+
+	FLASH_CR = FLASH_CR_PG;
+	if (!expect_eq("FL-002.LOCKED", FLASH_CR, FLASH_CR_LOCK)) return;
+	FLASH_KEYR = 0x45670123u;
+	FLASH_KEYR = 0xCDEF89ABu;
+	i2c_clear_log();
+	FLASH_CR = FLASH_CR_PG | FLASH_CR_PER | FLASH_CR_OBL_LAUNCH;
+	if (!expect_eq("FL-002.CR", FLASH_CR, FLASH_CR_PG | FLASH_CR_PER | FLASH_CR_OBL_LAUNCH)) return;
+	if (!i2c_wait_n(1u)) {
+		fail_test("FL-002", "flash interrupt timeout");
+		return;
+	}
+	if (!expect_eq("FL-002.IRQ", g_log[0].irq_id, IRQ_FLASH)) return;
+	if (!expect_true("FL-002", (g_log[0].sr1 & FLASH_SR_EOP) != 0u, "flash EOP missing")) return;
+	FLASH_ACR = 0xFFFFFFFFu;
+	if (!expect_eq("FL-002.ACR", FLASH_ACR, 0x3Fu)) return;
+	pass_test("FL-002: unlock and writable masks");
+
+	i2c_clear_log();
+	FLASH_SR = FLASH_SR_EOP | FLASH_SR_PGERR | FLASH_SR_WRPRTERR;
+	if (!expect_eq("FL-003.SRCLR", FLASH_SR, 0u)) return;
+	FLASH_CR = FLASH_CR_LOCK;
+	if (!expect_eq("FL-003.LOCK", FLASH_CR, FLASH_CR_LOCK)) return;
+	pass_test("FL-003: status clear and relock");
+}
+
+static void test_adc(void)
+{
+	put_str("\r\n--- ADC1/ADC2 Conversion Test ---\r\n");
+	i2c_clear_log();
+
+	if (!expect_eq("ADC-001.SR", ADC_SR, 0u)) return;
+	if (!expect_eq("ADC-001.CR1", ADC_CR1, 0u)) return;
+	if (!expect_eq("ADC-001.CR2", ADC_CR2, 0u)) return;
+	pass_test("ADC-001: reset values");
+
+	RCC_APB2ENR |= RCC_APB2_ADC1 | RCC_APB2_ADC2;
+	ADC_CR1 = ADC_CR1_EOCIE;
+	RCC_APB2ENR &= ~RCC_APB2_ADC1;
+	if (!expect_eq("ADC-001.GATED", ADC_CR1, 0u)) return;
+	ADC_CR1 = 0u;
+	RCC_APB2ENR |= RCC_APB2_ADC1;
+	if (!expect_eq("ADC-001.RETAIN", ADC_CR1, ADC_CR1_EOCIE)) return;
+	RCC_APB2RSTR = RCC_APB2_ADC1;
+	RCC_APB2RSTR = 0u;
+	if (!expect_eq("ADC-001.RESET", ADC_CR1, 0u)) return;
+
+	ADC_CR1 = ADC_CR1_EOCIE;
+	ADC_SQR3 = 5u;
+	ADC_CR2 = ADC_CR2_ADON;
+	i2c_clear_log();
+	ADC_CR2 = ADC_CR2_ADON | ADC_CR2_SWSTART;
+	if (!i2c_wait_n(1u)) {
+		fail_test("ADC-002", "ADC1 interrupt timeout");
+		return;
+	}
+	if (!expect_eq("ADC-002.IRQ", g_log[0].irq_id, IRQ_ADC1_2)) return;
+	if (!expect_true("ADC-002", (ADC_SR & ADC_SR_EOC) != 0u, "ADC1 EOC missing")) return;
+	if (!expect_eq("ADC-002.DR", ADC_DR, 0x105u)) return;
+	if (!expect_eq("ADC-002.CLEAR", ADC_SR & ADC_SR_EOC, 0u)) return;
+	pass_test("ADC-002: ADC1 software conversion");
+
+	ADC2_CR1 = ADC_CR1_EOCIE;
+	ADC2_SQR3 = 9u;
+	ADC2_CR2 = ADC_CR2_ADON;
+	ADC2_CR2 = ADC_CR2_ADON | ADC_CR2_SWSTART;
+	if (!i2c_wait_n(2u)) {
+		fail_test("ADC-003", "ADC2 interrupt timeout");
+		return;
+	}
+	if (!expect_eq("ADC-003.IRQ", g_log[1].irq_id, IRQ_ADC1_2)) return;
+	if (!expect_true("ADC-003", (ADC2_SR & ADC_SR_EOC) != 0u, "ADC2 EOC missing")) return;
+	if (!expect_eq("ADC-003.DR", ADC2_DR, 0x209u)) return;
+	if (!expect_eq("ADC-003.CLEAR", ADC2_SR & ADC_SR_EOC, 0u)) return;
+	pass_test("ADC-003: ADC2 software conversion");
+
+	ADC_SR = ADC_SR_EOC;
+	ADC2_SR = ADC_SR_EOC;
+	if (!expect_eq("ADC-004.CLEAR1", ADC_SR & ADC_SR_EOC, 0u)) return;
+	if (!expect_eq("ADC-004.CLEAR2", ADC2_SR & ADC_SR_EOC, 0u)) return;
+	pass_test("ADC-004: EOC clear");
+}
+
+static void test_dac(void)
+{
+	put_str("\r\n--- DAC Output Test ---\r\n");
+
+	if (!expect_eq("DAC-001.CR", DAC_CR, 0u)) return;
+	if (!expect_eq("DAC-001.SWTRIGR", DAC_SWTRIGR, 0u)) return;
+	if (!expect_eq("DAC-001.DOR1", DAC_DOR1, 0u)) return;
+	if (!expect_eq("DAC-001.DOR2", DAC_DOR2, 0u)) return;
+	pass_test("DAC-001: reset values");
+
+	RCC_APB1ENR |= RCC_APB1_DAC;
+	DAC_CR = 0xFFFFFFFFu;
+	if (!expect_eq("DAC-002.CR", DAC_CR, DAC_CR_RW_MASK)) return;
+	pass_test("DAC-002: writable mask");
+
+	DAC_CR = DAC_CR_EN1 | DAC_CR_TEN1 | DAC_CR_TSEL1_MASK | DAC_CR_EN2 | DAC_CR_TEN2 | DAC_CR_TSEL2_MASK;
+	DAC_DHR12R1 = 0x1234u;
+	DAC_DHR12R2 = 0x0ABCu;
+	DAC_DHR8R1 = 0x5Au;
+	DAC_DHR8R2 = 0xC3u;
+	DAC_DHR12RD = 0x0FED0CBAu;
+	DAC_DHR12LD = 0x89AB7654u;
+	DAC_DHR8RD = 0x11223344u;
+	DAC_SWTRIGR = DAC_SWTRIGR_SWTRIG1 | DAC_SWTRIGR_SWTRIG2;
+	if (!expect_eq("DAC-003.DOR1", DAC_DOR1, 0x234u)) return;
+	if (!expect_eq("DAC-003.DOR2", DAC_DOR2, 0xABCu)) return;
+	if (!expect_eq("DAC-003.DHR12RD", DAC_DHR12RD, 0x0FED0CBAu)) return;
+	if (!expect_eq("DAC-003.DHR12LD", DAC_DHR12LD, 0x89AB7654u)) return;
+	if (!expect_eq("DAC-003.DHR8RD", DAC_DHR8RD, 0x11223344u)) return;
+	pass_test("DAC-003: trigger updates dual outputs and preserves holding registers");
+
+	RCC_APB1ENR &= ~RCC_APB1_DAC;
+	if (!expect_eq("DAC-004.GATED", DAC_CR, 0u)) return;
+	DAC_CR = DAC_CR_EN1;
+	RCC_APB1ENR |= RCC_APB1_DAC;
+	if (!expect_eq("DAC-004.RETAIN", DAC_CR,
+	               DAC_CR_EN1 | DAC_CR_TEN1 | DAC_CR_TSEL1_MASK | DAC_CR_EN2 | DAC_CR_TEN2 |
+	                   DAC_CR_TSEL2_MASK))
+		return;
+	RCC_APB1RSTR = RCC_APB1_DAC;
+	RCC_APB1RSTR = 0u;
+	if (!expect_eq("DAC-004.RESET", DAC_CR, 0u)) return;
+	if (!expect_eq("DAC-004.RESET_DOR1", DAC_DOR1, 0u)) return;
+	if (!expect_eq("DAC-004.RESET_DOR2", DAC_DOR2, 0u)) return;
+	pass_test("DAC-004: APB gate and reset");
+}
+
+static void test_can(void)
+{
+	put_str("\r\n--- CAN1 Register and Loopback Test ---\r\n");
+	unsigned int from;
+
+	if (!expect_eq("CAN-001.MCR", CAN1_MCR, 0x00010002u)) return;
+	if (!expect_eq("CAN-001.TSR", CAN1_TSR, 0x1C000000u)) return;
+	if (!expect_eq("CAN-001.IER", CAN1_IER, 0u)) return;
+	pass_test("CAN-001: reset values");
+
+	CAN1_MCR = 0xFFFFFFFFu;
+	if (!expect_eq("CAN-002.MCR", CAN1_MCR, CAN_MCR_RW_MASK)) return;
+	pass_test("CAN-002: writable mask");
+
+	RCC_APB1ENR |= RCC_APB1_CAN1;
+	CAN1_IER = CAN_IER_TMEIE | CAN_IER_FMPIE0;
+	i2c_clear_log();
+	from = g_log_count;
+	CAN1_TDT0R = 0x00000008u;
+	CAN1_TDL0R = 0x11223344u;
+	CAN1_TDH0R = 0x55667788u;
+	CAN1_TI0R = 0x1ABCDE78u | CAN_TIR_TXRQ;
+	if (!i2c_wait_n(from + 2u)) {
+		fail_test("CAN-003", "interrupt timeout");
+		return;
+	}
+	int tx_idx = i2c_find(from, IRQ_CAN1_TX, CAN_TSR_TXOK0);
+	int rx_idx = i2c_find(from, IRQ_CAN1_RX0, 0x1u);
+	if (!expect_true("CAN-003", tx_idx >= 0, "TX IRQ missing")) return;
+	if (!expect_true("CAN-003", rx_idx >= 0, "RX0 IRQ missing")) return;
+	if (!expect_true("CAN-003", (g_log[tx_idx].sr1 & CAN_TSR_TXOK0) != 0u, "TXOK missing")) return;
+	if (!expect_eq("CAN-003.TX", g_log[tx_idx].sr2, 0x1ABCDE79u)) return;
+	if (!expect_eq("CAN-003.RX", g_log[rx_idx].sr2, 0x1ABCDE79u)) return;
+	if (!expect_eq("CAN-003.RI0R", CAN1_RI0R, 0x1ABCDE79u)) return;
+	if (!expect_eq("CAN-003.RF0R", CAN1_RF0R & 0x3u, 0u)) return;
+	if (!expect_eq("CAN-003.TSR", CAN1_TSR & (CAN_TSR_RQCP0 | CAN_TSR_TXOK0), 0u)) return;
+	pass_test("CAN-003: TX request loopback and interrupt claims");
+
+	RCC_APB1ENR &= ~RCC_APB1_CAN1;
+	if (!expect_eq("CAN-004.GATED", CAN1_IER, 0u)) return;
+	CAN1_IER = CAN_IER_TMEIE;
+	RCC_APB1ENR |= RCC_APB1_CAN1;
+	if (!expect_eq("CAN-004.RETAIN", CAN1_IER, CAN_IER_TMEIE | CAN_IER_FMPIE0)) return;
+	RCC_APB1RSTR = RCC_APB1_CAN1;
+	RCC_APB1RSTR = 0u;
+	if (!expect_eq("CAN-004.RESET_MCR", CAN1_MCR, 0x00010002u)) return;
+	if (!expect_eq("CAN-004.RESET_TSR", CAN1_TSR, 0x1C000000u)) return;
+	if (!expect_eq("CAN-004.RESET_IER", CAN1_IER, 0u)) return;
+	pass_test("CAN-004: APB gate and reset");
 }
 
 static void i2c_stop(void)
@@ -650,6 +1742,162 @@ void trap_handler(void)
 			__asm__ volatile("fence" ::: "memory");
 			g_log_count = idx + 1u;
 		}
+	} else if (irq_id == IRQ_EXTI1) {
+		unsigned int pr = EXTI_PR;
+		EXTI_PR = pr;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = pr;
+			g_log[idx].sr2 = 0u;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_DMA1_CH1) {
+		unsigned int isr = DMA1_ISR;
+		unsigned int ndtr = DMA1_CNDTR1;
+		DMA1_IFCR = DMA_IFCR_CGIF1 | DMA_IFCR_CTCIF1;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = isr;
+			g_log[idx].sr2 = ndtr;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == SPI_IRQ1 || irq_id == SPI_IRQ2) {
+		volatile uint32_t *srp = (irq_id == SPI_IRQ1) ? &SPI1_SR : &SPI2_SR;
+		volatile uint32_t *drp = (irq_id == SPI_IRQ1) ? &SPI1_DR : &SPI2_DR;
+		unsigned int sr = *srp;
+		unsigned int data = 0u;
+		if ((sr & SPI_SR_RXNE) != 0u) {
+			data = *drp;
+		}
+		if ((sr & SPI_SR_TXE) != 0u) {
+			*srp &= ~SPI_SR_TXE;
+		}
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = sr;
+			g_log[idx].sr2 = data;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_USART1 || irq_id == IRQ_USART2) {
+		volatile uint32_t *srp = (irq_id == IRQ_USART1) ? &USART1_SR : &USART2_SR;
+		volatile uint32_t *drp = (irq_id == IRQ_USART1) ? &USART1_DR : &USART2_DR;
+		unsigned int sr = *srp;
+		unsigned int data = 0u;
+		if ((sr & USART_SR_RXNE) != 0u) {
+			data = *drp;
+		}
+		if ((sr & (USART_SR_TXE | USART_SR_TC)) != 0u) {
+			*srp &= ~(USART_SR_TXE | USART_SR_TC);
+		}
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = sr;
+			g_log[idx].sr2 = data;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_RTC) {
+		unsigned int crl = RTC_CRL;
+		unsigned int cntl = RTC_CNTL;
+		RTC_CRL = crl;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = crl;
+			g_log[idx].sr2 = cntl;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_TIM1_UP || irq_id == IRQ_TIM2_UP) {
+		volatile uint32_t *srp = (irq_id == IRQ_TIM1_UP) ? &TIM1_SR : &TIM2_SR;
+		volatile uint32_t *cntp = (irq_id == IRQ_TIM1_UP) ? &TIM1_CNT : &TIM2_CNT;
+		unsigned int sr = *srp;
+		unsigned int cnt = *cntp;
+		*srp = TIM_SR_UIF;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = sr;
+			g_log[idx].sr2 = cnt;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_WWDG) {
+		unsigned int sr = WWDG_SR;
+		unsigned int cr = WWDG_CR;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = sr;
+			g_log[idx].sr2 = cr;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_FLASH) {
+		unsigned int sr = FLASH_SR;
+		unsigned int cr = FLASH_CR;
+		FLASH_SR = FLASH_SR_EOP;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = sr;
+			g_log[idx].sr2 = cr;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_ADC1_2) {
+		unsigned int sr1 = ADC_SR;
+		unsigned int sr2 = ADC2_SR;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = sr1;
+			g_log[idx].sr2 = sr2;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_CAN1_TX) {
+		unsigned int tsr = CAN1_TSR;
+		unsigned int tir = CAN1_TI0R;
+		CAN1_TSR = CAN_TSR_RQCP0 | CAN_TSR_TXOK0;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = tsr;
+			g_log[idx].sr2 = tir;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_CAN1_RX0) {
+		unsigned int rf0r = CAN1_RF0R;
+		unsigned int rir = CAN1_RI0R;
+		CAN1_RF0R = 0x21u;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = rf0r;
+			g_log[idx].sr2 = rir;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_CAN1_RX1 || irq_id == IRQ_CAN1_SCE) {
+		unsigned int esr = CAN1_ESR;
+		unsigned int msr = CAN1_MSR;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = esr;
+			g_log[idx].sr2 = msr;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
 	}
 
 	PLIC_CLAIM_HART0 = irq_id;
@@ -707,6 +1955,17 @@ static void test_register_model(void)
 	if (!expect_eq("REG-004.SR2", I2C0_SR2, 0u)) return;
 	if (!expect_eq("REG-004.LOG", g_log_count, mon.from + 1u)) return;
 	pass_test("REG-004: PE clear resets active transaction state");
+
+	i2c_init();
+	RCC_APB1ENR &= ~RCC_APB1_I2C1;
+	if (!expect_eq("REG-005.GATED_READ", I2C0_CR1, 0u)) return;
+	I2C0_CR1 = 0u;
+	RCC_APB1ENR |= RCC_APB1_I2C1;
+	if (!expect_eq("REG-005.RETAINED", I2C0_CR1, CR1_PE)) return;
+	RCC_APB1RSTR = RCC_APB1_I2C1;
+	RCC_APB1RSTR = 0u;
+	if (!expect_eq("REG-005.RESET", I2C0_CR1, 0u)) return;
+	pass_test("REG-005: RCC clock gate and APB reset");
 }
 
 static void test_irq_semantics(void)
@@ -1286,6 +2545,18 @@ void isr_main(void)
 	setup_plic();
 	enable_irq();
 
+	if (g_test_mask & 0x001u) test_rcc();
+	if (g_test_mask & 0x200u) test_gpio_exti();
+	if (g_test_mask & 0x400u) test_dma_crc();
+	if (g_test_mask & 0x2000u) test_backup_domain();
+	if (g_test_mask & 0x4000u) test_timers();
+	if (g_test_mask & 0x8000u) test_watchdogs();
+	if (g_test_mask & 0x10000u) test_flash();
+	if (g_test_mask & 0x20000u) test_adc();
+	if (g_test_mask & 0x40000u) test_dac();
+	if (g_test_mask & 0x80000u) test_can();
+	if (g_test_mask & 0x1000u) test_spi();
+	if (g_test_mask & 0x800u) test_usart();
 	i2c_init();
 	i2c_clear_log();
 	if (g_test_mask & 0x001u) test_register_model();

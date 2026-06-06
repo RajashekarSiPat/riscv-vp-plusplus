@@ -11,10 +11,28 @@
 #include "core/rv32/mem.h"
 #include "platform/common/bus.h"
 #include "platform/common/fe310_plic.h"
+#include "platform/common/stm32f1_adc.h"
+#include "platform/common/stm32f1_can.h"
+#include "platform/common/stm32f1_dac.h"
+#include "platform/common/stm32f1_flash.h"
 #include "platform/common/i2c_bus.h"
 #include "platform/common/i2c_stm32.h"
 #include "platform/common/memory.h"
 #include "platform/common/options.h"
+#include "platform/common/stm32f1_afio.h"
+#include "platform/common/stm32f1_bkp.h"
+#include "platform/common/stm32f1_crc.h"
+#include "platform/common/stm32f1_dma.h"
+#include "platform/common/stm32f1_exti.h"
+#include "platform/common/stm32f1_gpio.h"
+#include "platform/common/stm32f1_map.h"
+#include "platform/common/stm32f1_rcc.h"
+#include "platform/common/stm32f1_pwr.h"
+#include "platform/common/stm32f1_rtc.h"
+#include "platform/common/stm32f1_watchdog.h"
+#include "platform/common/stm32f1_tim.h"
+#include "platform/common/stm32f1_spi.h"
+#include "platform/common/stm32f1_usart.h"
 #include "util/options.h"
 #include "util/propertytree.h"
 
@@ -31,10 +49,48 @@ struct I2CTestOptions : Options {
 	addr_t clint_end_addr = 0x0200ffffull;
 	addr_t plic_start_addr = 0x40000000ull;
 	addr_t plic_end_addr = 0x40ffffffull;
-	addr_t i2c0_start_addr = 0x41005400ull;
+	addr_t i2c0_start_addr = stm32f1::I2C1;
 	addr_t i2c0_end_addr = 0x410054ffull;
-	addr_t i2c1_start_addr = 0x41005800ull;
+	addr_t i2c1_start_addr = stm32f1::I2C2;
 	addr_t i2c1_end_addr = 0x410058ffull;
+	addr_t rcc_start_addr = stm32f1::RCC;
+	addr_t rcc_end_addr = stm32f1::RCC + 0xffull;
+	addr_t afio_start_addr = stm32f1::AFIO;
+	addr_t afio_end_addr = stm32f1::AFIO + 0xffull;
+	addr_t exti_start_addr = stm32f1::EXTI;
+	addr_t exti_end_addr = stm32f1::EXTI + 0xffull;
+	addr_t gpioa_start_addr = stm32f1::GPIOA;
+	addr_t gpioa_end_addr = stm32f1::GPIOA + 0xffull;
+	addr_t gpiob_start_addr = stm32f1::GPIOB;
+	addr_t gpiob_end_addr = stm32f1::GPIOB + 0xffull;
+	addr_t gpioc_start_addr = stm32f1::GPIOC;
+	addr_t gpioc_end_addr = stm32f1::GPIOC + 0xffull;
+	addr_t gpiod_start_addr = stm32f1::GPIOD;
+	addr_t gpiod_end_addr = stm32f1::GPIOD + 0xffull;
+	addr_t gpioe_start_addr = stm32f1::GPIOE;
+	addr_t gpioe_end_addr = stm32f1::GPIOE + 0xffull;
+	addr_t dma1_start_addr = stm32f1::DMA1;
+	addr_t dma1_end_addr = stm32f1::DMA1 + 0x1ffull;
+	addr_t flash_start_addr = stm32f1::FLASH;
+	addr_t flash_end_addr = stm32f1::FLASH + 0xffull;
+	addr_t adc1_start_addr = stm32f1::ADC1;
+	addr_t adc1_end_addr = stm32f1::ADC1 + 0xffull;
+	addr_t adc2_start_addr = stm32f1::ADC2;
+	addr_t adc2_end_addr = stm32f1::ADC2 + 0xffull;
+	addr_t dac_start_addr = stm32f1::DAC;
+	addr_t dac_end_addr = stm32f1::DAC + 0xffull;
+	addr_t can1_start_addr = stm32f1::CAN1;
+	addr_t can1_end_addr = stm32f1::CAN1 + 0x3ffull;
+	addr_t crc_start_addr = stm32f1::CRC;
+	addr_t crc_end_addr = stm32f1::CRC + 0xffull;
+	addr_t spi1_start_addr = stm32f1::SPI1;
+	addr_t spi1_end_addr = stm32f1::SPI1 + 0xffull;
+	addr_t spi2_start_addr = stm32f1::SPI2;
+	addr_t spi2_end_addr = stm32f1::SPI2 + 0xffull;
+	addr_t usart1_start_addr = stm32f1::USART1;
+	addr_t usart1_end_addr = stm32f1::USART1 + 0xffull;
+	addr_t usart2_start_addr = stm32f1::USART2;
+	addr_t usart2_end_addr = stm32f1::USART2 + 0xffull;
 	addr_t console_start_addr = 0x09004000ull;
 	addr_t console_end_addr = 0x09004fffull;
 	addr_t exiter_start_addr = 0x09010000ull;
@@ -92,22 +148,147 @@ int sc_main(int argc, char **argv) {
 	SimpleMemory mem("RAM", opt.mem_size);
 	CombinedMemoryInterface iss_mem_if("MemIf", core);
 	ELFLoader loader(opt.input_program.c_str());
-	FE310_PLIC<1, 16, 32, 32> plic("PLIC");
+	FE310_PLIC<1, 32, 32, 32> plic("PLIC");
 	CLINT<1> clint("CLINT");
 	I2cStm32 i2c0("I2C0");
 	I2cStm32 i2c1("I2C1");
 	I2cBus i2c_bus("I2C_BUS");
+	Stm32f1Rcc rcc("RCC");
+	Stm32f1Flash flash("FLASH");
+	Stm32f1Pwr pwr("PWR");
+	Stm32f1Bkp bkp("BKP");
+	Stm32f1Rtc rtc("RTC");
+	Stm32f1Wwdg wwdg("WWDG");
+	Stm32f1Iwdg iwdg("IWDG");
+	Stm32f1Tim tim1("TIM1");
+	Stm32f1Tim tim2("TIM2");
+	Stm32f1Tim tim3("TIM3");
+	Stm32f1Tim tim4("TIM4");
+	Stm32f1Tim tim5("TIM5");
+	Stm32f1Afio afio("AFIO");
+	Stm32f1Exti exti("EXTI");
+	Stm32f1GpioPort gpioa("GPIOA", 0u);
+	Stm32f1GpioPort gpiob("GPIOB", 1u);
+	Stm32f1GpioPort gpioc("GPIOC", 2u);
+	Stm32f1GpioPort gpiod("GPIOD", 3u);
+	Stm32f1GpioPort gpioe("GPIOE", 4u);
+	Stm32f1Adc adc1("ADC1", 0u);
+	Stm32f1Adc adc2("ADC2", 1u);
+	Stm32f1Dac dac("DAC");
+	Stm32f1Can can1("CAN1");
+	Stm32f1Dma dma1("DMA1");
+	Stm32f1Crc crc("CRC");
+	Stm32f1Spi spi1("SPI1");
+	Stm32f1Spi spi2("SPI2");
+	Stm32f1Usart usart1("USART1");
+	Stm32f1Usart usart2("USART2");
 	ConsoleUart console("Console");
 	Exiter exiter("Exiter");
+	sc_core::sc_fifo<uint8_t> usart1_to_2("USART1_TO_2", 16);
+	sc_core::sc_fifo<uint8_t> usart2_to_1("USART2_TO_1", 16);
 
 	/* self-contained I2C pair */
 	i2c0.bus_initiator_socket.bind(i2c_bus.target_socket_0);
 	i2c1.bus_initiator_socket.bind(i2c_bus.target_socket_1);
 	i2c_bus.initiator_socket_0.bind(i2c0.bus_target_socket);
 	i2c_bus.initiator_socket_1.bind(i2c1.bus_target_socket);
+	rcc.bind_apb1(21u, [&](bool enabled) { i2c0.set_clock_enabled(enabled); },
+	              [&]() { i2c0.peripheral_reset(); });
+	rcc.bind_apb1(22u, [&](bool enabled) { i2c1.set_clock_enabled(enabled); },
+	              [&]() { i2c1.peripheral_reset(); });
+	rcc.bind_apb1(27u, [&](bool enabled) { bkp.set_clock_enabled(enabled); },
+	              [&]() { bkp.peripheral_reset(); });
+	rcc.bind_apb1(28u, [&](bool enabled) { pwr.set_clock_enabled(enabled); },
+	              [&]() { pwr.peripheral_reset(); });
+	rcc.bind_apb1(11u, [&](bool enabled) { wwdg.set_clock_enabled(enabled); },
+	              [&]() { wwdg.peripheral_reset(); });
+	rcc.bind_apb2(0u, [&](bool) {}, [&]() { afio.reset(); });
+	rcc.bind_apb2(2u, [&](bool) {}, [&]() { gpioa.reset(); });
+	rcc.bind_apb2(3u, [&](bool) {}, [&]() { gpiob.reset(); });
+	rcc.bind_apb2(4u, [&](bool) {}, [&]() { gpioc.reset(); });
+	rcc.bind_apb2(5u, [&](bool) {}, [&]() { gpiod.reset(); });
+	rcc.bind_apb2(6u, [&](bool) {}, [&]() { gpioe.reset(); });
+	rcc.bind_apb2(14u, [&](bool enabled) { usart1.set_clock_enabled(enabled); },
+	              [&]() { usart1.peripheral_reset(); });
+	rcc.bind_apb2(12u, [&](bool enabled) { spi1.set_clock_enabled(enabled); }, [&]() { spi1.peripheral_reset(); });
+	rcc.bind_apb2(9u, [&](bool enabled) { adc1.set_clock_enabled(enabled); }, [&]() { adc1.peripheral_reset(); });
+	rcc.bind_apb2(10u, [&](bool enabled) { adc2.set_clock_enabled(enabled); }, [&]() { adc2.peripheral_reset(); });
+	rcc.bind_ahb(0u, [&](bool enabled) { dma1.set_clock_enabled(enabled); }, [&]() { dma1.peripheral_reset(); });
+	rcc.bind_ahb(6u, [&](bool enabled) { crc.set_clock_enabled(enabled); }, [&]() { crc.peripheral_reset(); });
+	rcc.bind_apb1(17u, [&](bool enabled) { usart2.set_clock_enabled(enabled); },
+	              [&]() { usart2.peripheral_reset(); });
+	rcc.bind_apb1(14u, [&](bool enabled) { spi2.set_clock_enabled(enabled); }, [&]() { spi2.peripheral_reset(); });
+	rcc.bind_apb1(29u, [&](bool enabled) { dac.set_clock_enabled(enabled); }, [&]() { dac.peripheral_reset(); });
+	rcc.bind_apb1(25u, [&](bool enabled) { can1.set_clock_enabled(enabled); }, [&]() { can1.peripheral_reset(); });
+	rcc.bind_apb2(11u, [&](bool enabled) { tim1.set_clock_enabled(enabled); }, [&]() { tim1.peripheral_reset(); });
+	rcc.bind_apb1(0u, [&](bool enabled) { tim2.set_clock_enabled(enabled); }, [&]() { tim2.peripheral_reset(); });
+	rcc.bind_apb1(1u, [&](bool enabled) { tim3.set_clock_enabled(enabled); }, [&]() { tim3.peripheral_reset(); });
+	rcc.bind_apb1(2u, [&](bool enabled) { tim4.set_clock_enabled(enabled); }, [&]() { tim4.peripheral_reset(); });
+	rcc.bind_apb1(3u, [&](bool enabled) { tim5.set_clock_enabled(enabled); }, [&]() { tim5.peripheral_reset(); });
+	rcc.bind_bdcr([&](bool enabled) { rtc.set_enabled(enabled); },
+	              [&]() {
+		              bkp.peripheral_reset();
+		              rtc.backup_reset();
+	              });
+	pwr.set_clock_enabled(true);
+	bkp.pwr = &pwr;
+	rtc.pwr = &pwr;
+	rtc.irq_id = stm32f1::IRQ_RTC;
+	flash.plic = &plic;
+	flash.irq_id = stm32f1::IRQ_FLASH;
+	wwdg.plic = &plic;
+	wwdg.irq_id = stm32f1::IRQ_WWDG;
+	exti.plic = &plic;
+	exti.afio = &afio;
+	exti.irq_ids[1u] = 6u;
+	gpioa.afio = &afio;
+	gpioa.exti = &exti;
+	gpiob.afio = &afio;
+	gpiob.exti = &exti;
+	gpioc.afio = &afio;
+	gpioc.exti = &exti;
+	gpiod.afio = &afio;
+	gpiod.exti = &exti;
+	gpioe.afio = &afio;
+	gpioe.exti = &exti;
+	adc1.plic = &plic;
+	adc1.irq_id = stm32f1::IRQ_ADC1_2;
+	adc2.plic = &plic;
+	adc2.irq_id = stm32f1::IRQ_ADC1_2;
+	can1.plic = &plic;
+	can1.irq_tx = stm32f1::IRQ_CAN1_TX;
+	can1.irq_rx0 = stm32f1::IRQ_CAN1_RX0;
+	can1.irq_rx1 = stm32f1::IRQ_CAN1_RX1;
+	can1.irq_sce = stm32f1::IRQ_CAN1_SCE;
+	dma1.plic = &plic;
+	spi1.plic = &plic;
+	spi1.irq_id = 5u;
+	spi2.plic = &plic;
+	spi2.irq_id = 8u;
+	spi1.set_peer(&spi2);
+	spi2.set_peer(&spi1);
+	usart1.plic = &plic;
+	usart1.irq_id = 14u;
+	usart2.plic = &plic;
+	usart2.irq_id = 15u;
+	usart1.tx_port(usart1_to_2);
+	usart2.rx_port(usart1_to_2);
+	usart2.tx_port(usart2_to_1);
+	usart1.rx_port(usart2_to_1);
+	gpioa.set_peer(0u, [&](bool level) { gpiob.set_external_level(1u, level); });
+	tim1.plic = &plic;
+	tim1.irq_id = stm32f1::IRQ_TIM1_UP;
+	tim2.plic = &plic;
+	tim2.irq_id = stm32f1::IRQ_TIM2_UP;
+	tim3.plic = &plic;
+	tim3.irq_id = stm32f1::IRQ_TIM3_UP;
+	tim4.plic = &plic;
+	tim4.irq_id = stm32f1::IRQ_TIM4_UP;
+	tim5.plic = &plic;
+	tim5.irq_id = stm32f1::IRQ_TIM5_UP;
 
-	/* Bus: 1 initiator (ISS), 7 targets */
-	SimpleBus<1, 7> bus("Bus", nullptr, opt.break_on_transaction);
+	/* Bus: 2 initiators (ISS and DMA1), 36 targets */
+	SimpleBus<2, 36> bus("Bus", nullptr, opt.break_on_transaction);
 
 	{
 		unsigned i = 0;
@@ -116,12 +297,42 @@ int sc_main(int argc, char **argv) {
 		bus.ports[i++] = new PortMapping(opt.plic_start_addr, opt.plic_end_addr, plic);
 		bus.ports[i++] = new PortMapping(opt.i2c0_start_addr, opt.i2c0_end_addr, i2c0);
 		bus.ports[i++] = new PortMapping(opt.i2c1_start_addr, opt.i2c1_end_addr, i2c1);
+		bus.ports[i++] = new PortMapping(opt.rcc_start_addr, opt.rcc_end_addr, rcc);
+		bus.ports[i++] = new PortMapping(opt.flash_start_addr, opt.flash_end_addr, flash);
+		bus.ports[i++] = new PortMapping(stm32f1::PWR, stm32f1::PWR + 0xffull, pwr);
+		bus.ports[i++] = new PortMapping(stm32f1::BKP, stm32f1::BKP + 0xffull, bkp);
+		bus.ports[i++] = new PortMapping(stm32f1::RTC, stm32f1::RTC + 0xffull, rtc);
+		bus.ports[i++] = new PortMapping(stm32f1::WWDG, stm32f1::WWDG + 0xffull, wwdg);
+		bus.ports[i++] = new PortMapping(stm32f1::IWDG, stm32f1::IWDG + 0xffull, iwdg);
+		bus.ports[i++] = new PortMapping(stm32f1::TIM1, stm32f1::TIM1 + 0xffull, tim1);
+		bus.ports[i++] = new PortMapping(stm32f1::TIM2, stm32f1::TIM2 + 0xffull, tim2);
+		bus.ports[i++] = new PortMapping(stm32f1::TIM3, stm32f1::TIM3 + 0xffull, tim3);
+		bus.ports[i++] = new PortMapping(stm32f1::TIM4, stm32f1::TIM4 + 0xffull, tim4);
+		bus.ports[i++] = new PortMapping(stm32f1::TIM5, stm32f1::TIM5 + 0xffull, tim5);
+		bus.ports[i++] = new PortMapping(opt.afio_start_addr, opt.afio_end_addr, afio);
+		bus.ports[i++] = new PortMapping(opt.exti_start_addr, opt.exti_end_addr, exti);
+		bus.ports[i++] = new PortMapping(opt.gpioa_start_addr, opt.gpioa_end_addr, gpioa);
+		bus.ports[i++] = new PortMapping(opt.gpiob_start_addr, opt.gpiob_end_addr, gpiob);
+		bus.ports[i++] = new PortMapping(opt.gpioc_start_addr, opt.gpioc_end_addr, gpioc);
+		bus.ports[i++] = new PortMapping(opt.gpiod_start_addr, opt.gpiod_end_addr, gpiod);
+		bus.ports[i++] = new PortMapping(opt.gpioe_start_addr, opt.gpioe_end_addr, gpioe);
+		bus.ports[i++] = new PortMapping(opt.adc1_start_addr, opt.adc1_end_addr, adc1);
+		bus.ports[i++] = new PortMapping(opt.adc2_start_addr, opt.adc2_end_addr, adc2);
+		bus.ports[i++] = new PortMapping(opt.dac_start_addr, opt.dac_end_addr, dac);
+		bus.ports[i++] = new PortMapping(opt.can1_start_addr, opt.can1_end_addr, can1);
+		bus.ports[i++] = new PortMapping(opt.dma1_start_addr, opt.dma1_end_addr, dma1);
+		bus.ports[i++] = new PortMapping(opt.crc_start_addr, opt.crc_end_addr, crc);
+		bus.ports[i++] = new PortMapping(opt.spi1_start_addr, opt.spi1_end_addr, spi1);
+		bus.ports[i++] = new PortMapping(opt.spi2_start_addr, opt.spi2_end_addr, spi2);
+		bus.ports[i++] = new PortMapping(opt.usart1_start_addr, opt.usart1_end_addr, usart1);
+		bus.ports[i++] = new PortMapping(opt.usart2_start_addr, opt.usart2_end_addr, usart2);
 		bus.ports[i++] = new PortMapping(opt.console_start_addr, opt.console_end_addr, console);
 		bus.ports[i++] = new PortMapping(opt.exiter_start_addr, opt.exiter_end_addr, exiter);
 	}
 	bus.mapping_complete();
 
 	iss_mem_if.isock.bind(bus.tsocks[0]);
+	dma1.bus_initiator_socket.bind(bus.tsocks[1]);
 	{
 		unsigned i = 0;
 		bus.isocks[i++].bind(mem.tsock);
@@ -129,6 +340,33 @@ int sc_main(int argc, char **argv) {
 		bus.isocks[i++].bind(plic.tsock);
 		bus.isocks[i++].bind(i2c0.socket);
 		bus.isocks[i++].bind(i2c1.socket);
+		bus.isocks[i++].bind(rcc.socket);
+		bus.isocks[i++].bind(flash.socket);
+		bus.isocks[i++].bind(pwr.socket);
+		bus.isocks[i++].bind(bkp.socket);
+		bus.isocks[i++].bind(rtc.socket);
+		bus.isocks[i++].bind(wwdg.socket);
+		bus.isocks[i++].bind(iwdg.socket);
+		bus.isocks[i++].bind(tim1.socket);
+		bus.isocks[i++].bind(tim2.socket);
+		bus.isocks[i++].bind(tim3.socket);
+		bus.isocks[i++].bind(tim4.socket);
+		bus.isocks[i++].bind(tim5.socket);
+		bus.isocks[i++].bind(afio.socket);
+		bus.isocks[i++].bind(exti.socket);
+		bus.isocks[i++].bind(gpioa.socket);
+		bus.isocks[i++].bind(gpiob.socket);
+		bus.isocks[i++].bind(gpioc.socket);
+		bus.isocks[i++].bind(gpiod.socket);
+		bus.isocks[i++].bind(gpioe.socket);
+		bus.isocks[i++].bind(adc1.socket);
+		bus.isocks[i++].bind(adc2.socket);
+		bus.isocks[i++].bind(dma1.socket);
+		bus.isocks[i++].bind(crc.socket);
+		bus.isocks[i++].bind(spi1.socket);
+		bus.isocks[i++].bind(spi2.socket);
+		bus.isocks[i++].bind(usart1.socket);
+		bus.isocks[i++].bind(usart2.socket);
 		bus.isocks[i++].bind(console.tsock);
 		bus.isocks[i++].bind(exiter.tsock);
 	}
@@ -164,6 +402,14 @@ int sc_main(int argc, char **argv) {
 	i2c1.plic = &plic;
 	i2c1.ev_irq_id = 3u;
 	i2c1.er_irq_id = 4u;
+	spi1.plic = &plic;
+	spi1.irq_id = 5u;
+	spi2.plic = &plic;
+	spi2.irq_id = 8u;
+	usart1.plic = &plic;
+	usart1.irq_id = 14u;
+	usart2.plic = &plic;
+	usart2.irq_id = 15u;
 
 	/* Keep the slave addresses fixed for the verification suite. */
 	i2c0.slave_addr = 0x50u;

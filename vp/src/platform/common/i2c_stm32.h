@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <systemc>
@@ -65,6 +66,14 @@ public:
 		SC_METHOD(tx_frame_done_method);
 		sensitive << m_tx_frame_done_event;
 		dont_initialize();
+		do_reset();
+	}
+
+	void set_clock_enabled(bool enabled) {
+		m_clock_enabled = enabled;
+	}
+
+	void peripheral_reset() {
 		do_reset();
 	}
 
@@ -161,6 +170,7 @@ private:
 	bool m_rx_frame_pending = false;
 	bool m_tx_frame_pending = false;
 	bool m_external_transfer = false;
+	bool m_clock_enabled = true;
 	uint16_t m_current_addr = 0u;
 	uint16_t m_addr10_prefix = 0u;
 	bool m_current_addr10 = false;
@@ -405,6 +415,9 @@ private:
 			trans.set_response_status(tlm::TLM_BURST_ERROR_RESPONSE);
 			return;
 		}
+		if (!m_clock_enabled) {
+			return;
+		}
 
 		I2cBusFrame frame = *reinterpret_cast<I2cBusFrame *>(trans.get_data_ptr());
 		switch (static_cast<I2cBusOp>(frame.op)) {
@@ -484,6 +497,13 @@ private:
 		uint8_t *ptr = trans.get_data_ptr();
 		trans.set_dmi_allowed(false);
 		trans.set_response_status(tlm::TLM_OK_RESPONSE);
+		if (!m_clock_enabled) {
+			if (is_rd && ptr != nullptr) {
+				const uint32_t value = 0u;
+				std::memcpy(ptr, &value, std::min(trans.get_data_length(), 4u));
+			}
+			return;
+		}
 
 		if (is_rd) {
 			uint32_t val = 0u;

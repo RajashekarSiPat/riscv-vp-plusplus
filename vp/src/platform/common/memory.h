@@ -69,6 +69,7 @@ struct SimpleMemory : public sc_core::sc_module, public load_if {
 	void transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &delay) {
 		transport_dbg(trans);
 		delay += access_delay;
+		trans.set_response_status(tlm::TLM_OK_RESPONSE);
 	}
 
 	unsigned transport_dbg(tlm::tlm_generic_payload &trans) {
