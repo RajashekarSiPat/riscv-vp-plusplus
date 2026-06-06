@@ -1815,6 +1815,13 @@ static void test_dac(void)
 	if (!expect_eq("DAC-002.CR", DAC_CR, DAC_CR_RW_MASK)) return;
 	pass_test("DAC-002: writable mask");
 
+	DAC_DHR12R1 = 0x0123u;
+	DAC_DHR12R2 = 0x0456u;
+	DAC_SWTRIGR = DAC_SWTRIGR_SWTRIG1 | DAC_SWTRIGR_SWTRIG2;
+	if (!expect_eq("DAC-002B.DOR1", DAC_DOR1, 0u)) return;
+	if (!expect_eq("DAC-002B.DOR2", DAC_DOR2, 0u)) return;
+	pass_test("DAC-002B: software trigger is ignored while TEN is clear");
+
 	DAC_CR = DAC_CR_EN1 | DAC_CR_TEN1 | DAC_CR_TSEL1_MASK | DAC_CR_EN2 | DAC_CR_TEN2 | DAC_CR_TSEL2_MASK;
 	DAC_DHR12R1 = 0x1234u;
 	DAC_DHR12R2 = 0x0ABCu;

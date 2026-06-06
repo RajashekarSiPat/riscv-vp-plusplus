@@ -93,10 +93,10 @@ private:
 	}
 
 	void update_outputs(uint32_t mask) {
-		if ((mask & 0x1u) != 0u) {
+		if ((mask & 0x1u) != 0u && (m_cr & CR_TEN1) != 0u) {
 			m_dor1 = m_dhr12r1 & 0x0FFFu;
 		}
-		if ((mask & 0x2u) != 0u) {
+		if ((mask & 0x2u) != 0u && (m_cr & CR_TEN2) != 0u) {
 			m_dor2 = m_dhr12r2 & 0x0FFFu;
 		}
 	}
