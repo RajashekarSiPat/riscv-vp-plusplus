@@ -1985,6 +1985,18 @@ static void test_can(void)
 	if (!expect_eq("CAN-006.IRQ", g_log[0].irq_id, IRQ_CAN1_RX0)) return;
 	if (!expect_eq("CAN-006.TSR", CAN1_TSR & (CAN_TSR_RQCP0 | CAN_TSR_TXOK0), CAN_TSR_RQCP0 | CAN_TSR_TXOK0)) return;
 	pass_test("CAN-006: transmit-complete IRQ masked while RX FIFO still updates");
+
+	CAN1_IER = 0u;
+	i2c_clear_log();
+	from = g_log_count;
+	CAN1_TDT0R = 0x00000009u;
+	CAN1_TDL0R = 0xAABBCCDDu;
+	CAN1_TDH0R = 0x11223344u;
+	CAN1_TI0R = 0x50000000u | CAN_TIR_TXRQ;
+	if (!expect_eq("CAN-006B.LOG", g_log_count, from)) return;
+	if (!expect_eq("CAN-006B.TSR", CAN1_TSR & (CAN_TSR_RQCP0 | CAN_TSR_TXOK0), CAN_TSR_RQCP0 | CAN_TSR_TXOK0)) return;
+	if (!expect_eq("CAN-006B.RF0R", CAN1_RF0R & CAN_RF0R_FMP0_MASK, 3u)) return;
+	pass_test("CAN-006B: CAN status updates without interrupts when masked");
 }
 
 static void test_sdio(void)
