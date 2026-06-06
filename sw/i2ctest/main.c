@@ -1228,6 +1228,20 @@ static void test_spi(void)
 	if (!expect_eq("SPI-005.SR", g_log[err_idx].sr1 & SPI_SR_OVR, SPI_SR_OVR)) return;
 	if (!expect_eq("SPI-005.DATA", g_log[err_idx].sr2 & 0xFFu, 0x11u)) return;
 	pass_test("SPI-005: receive overrun and error interrupt");
+
+	spi_init();
+	SPI2_CR1 = 0u;
+	SPI2_CR2 = 0u;
+	i2c_clear_log();
+	from = g_log_count;
+	SPI1_DR = 0x33u;
+	if (!i2c_wait_n(from + 1u)) {
+		fail_test("SPI-006", "disabled-peer timeout");
+		return;
+	}
+	if (!expect_eq("SPI-006.LOG", g_log_count, from + 1u)) return;
+	if (!expect_eq("SPI-006.SLAVE_SR", SPI2_SR, 0u)) return;
+	pass_test("SPI-006: disabled SPI peer ignores inbound traffic");
 }
 
 static void test_usart(void)
@@ -1297,6 +1311,19 @@ static void test_usart(void)
 	if (!expect_eq("USART-005.SR", g_log[ore_idx].sr1 & USART_SR_ORE, USART_SR_ORE)) return;
 	if (!expect_eq("USART-005.DATA", g_log[ore_idx].sr2 & 0xFFu, 0x11u)) return;
 	pass_test("USART-005: receive overrun and error interrupt");
+
+	usart_init();
+	USART2_CR1 = 0u;
+	i2c_clear_log();
+	from = g_log_count;
+	USART1_DR = 0x44u;
+	if (!i2c_wait_n(from + 1u)) {
+		fail_test("USART-006", "disabled-peer timeout");
+		return;
+	}
+	if (!expect_eq("USART-006.LOG", g_log_count, from + 1u)) return;
+	if (!expect_eq("USART-006.SLAVE_SR", USART2_SR, 0u)) return;
+	pass_test("USART-006: disabled USART peer ignores inbound traffic");
 }
 
 static void test_dma_crc(void)
