@@ -2351,6 +2351,26 @@ static void test_eth(void)
 	if (!expect_eq("ETH-005.DMASR", ETH_DMASR & (ETH_DMASR_TI | ETH_DMASR_NIS), ETH_DMASR_TI | ETH_DMASR_NIS)) return;
 	if (!expect_eq("ETH-005.LOG", g_log_count, from)) return;
 	pass_test("ETH-005: DMA interrupt masking still preserves status updates");
+
+	for (unsigned i = 0u; i < 16u; ++i) {
+		g_eth_src_frame[i] = (uint8_t)(0xC0u + i);
+		g_eth_dst_frame[i] = 0u;
+	}
+	ETH_SEND_SRC = (uint32_t)(uintptr_t)g_eth_src_frame;
+	ETH_RECV_DST = (uint32_t)(uintptr_t)g_eth_dst_frame;
+	ETH_SEND_SIZE = 16u;
+	i2c_clear_log();
+	from = g_log_count;
+	ETH_STATUS = ETH_STATUS_SEND;
+	if (!expect_eq("ETH-005B.SEND", ETH_STATUS, ETH_STATUS_SEND)) return;
+	ETH_STATUS = ETH_STATUS_RECV;
+	if (!expect_eq("ETH-005B.LOG", g_log_count, from)) return;
+	if (!expect_eq("ETH-005B.STATUS", ETH_STATUS, ETH_STATUS_RECV)) return;
+	if (!expect_eq("ETH-005B.DMASR", ETH_DMASR & (ETH_DMASR_RI | ETH_DMASR_NIS), ETH_DMASR_RI | ETH_DMASR_NIS)) return;
+	for (unsigned i = 0u; i < 16u; ++i) {
+		if (!expect_eq("ETH-005B.COPY", g_eth_dst_frame[i], g_eth_src_frame[i])) return;
+	}
+	pass_test("ETH-005B: DMA receive path updates without interrupts");
 }
 
 static void i2c_stop(void)
