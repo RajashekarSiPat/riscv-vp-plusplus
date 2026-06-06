@@ -1328,6 +1328,7 @@ static void test_dma_crc(void)
 static void test_backup_domain(void)
 {
 	put_str("\r\n--- Backup Domain and RTC Test ---\r\n");
+	unsigned int from;
 
 	if (!expect_eq("BD-001.PWR", PWR_CR, 0u)) return;
 	if (!expect_eq("BD-001.BKP", BKP_DR1, 0u)) return;
@@ -1391,6 +1392,34 @@ static void test_backup_domain(void)
 	RTC_CRL = RTC_CRL_ALRF | RTC_CRL_SECF;
 	if (!expect_eq("BD-005.CLEAR", RTC_CRL & (RTC_CRL_SECF | RTC_CRL_ALRF), 0u)) return;
 	pass_test("BD-005: RTC alarm flag and counter progression");
+
+	i2c_clear_log();
+	from = g_log_count;
+	RTC_CRH = RTC_CRH_SECIE | RTC_CRH_ALRIE;
+	RTC_CRL = 0u;
+	RTC_ALRL = 4u;
+	RCC_BDCR = RCC_BDCR_RTCEN;
+	(void)RTC_CNTL;
+	if (!i2c_wait_n(from + 1u)) {
+		fail_test("BD-005B", "RTC second interrupt timeout");
+		return;
+	}
+	if (!expect_eq("BD-005B.IRQ0", g_log[0].irq_id, IRQ_RTC)) return;
+	if (!expect_true("BD-005B", (g_log[0].sr1 & RTC_CRL_SECF) != 0u, "second flag missing")) return;
+	RTC_CRL = RTC_CRL_SECF;
+	if (!expect_eq("BD-005B.CLEAR0", RTC_CRL & RTC_CRL_SECF, 0u)) return;
+	RTC_CRH = RTC_CRH_ALRIE;
+	RTC_ALRL = 2u;
+	(void)RTC_CNTL;
+	if (!i2c_wait_n(from + 2u)) {
+		fail_test("BD-005B", "RTC alarm interrupt timeout");
+		return;
+	}
+	if (!expect_eq("BD-005B.IRQ1", g_log[1].irq_id, IRQ_RTC)) return;
+	if (!expect_true("BD-005B", (g_log[1].sr1 & RTC_CRL_ALRF) != 0u, "alarm flag missing")) return;
+	RTC_CRL = RTC_CRL_ALRF;
+	if (!expect_eq("BD-005B.CLEAR1", RTC_CRL & RTC_CRL_ALRF, 0u)) return;
+	pass_test("BD-005B: RTC second and alarm interrupts");
 
 	RCC_BDCR = RCC_BDCR_BDRST;
 	RCC_BDCR = RCC_BDCR_RTCEN;
