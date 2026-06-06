@@ -36,7 +36,9 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define GPIOB_BASE 0x41010C00UL
 #define RCC_BASE 0x41021000UL
 
+#define AFIO_MAPR MMIO32(AFIO_BASE + 0x04UL)
 #define AFIO_EXTICR1 MMIO32(AFIO_BASE + 0x08UL)
+#define AFIO_MAPR2 MMIO32(AFIO_BASE + 0x1CUL)
 
 #define EXTI_IMR MMIO32(EXTI_BASE + 0x00UL)
 #define EXTI_RTSR MMIO32(EXTI_BASE + 0x08UL)
@@ -74,6 +76,9 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define RCC_CR_HSERDY (1u << 17)
 #define RCC_CR_PLLON (1u << 24)
 #define RCC_CR_PLLRDY (1u << 25)
+#define RCC_CIR_HSIRDYF (1u << 2)
+#define RCC_CIR_HSERDYF (1u << 3)
+#define RCC_CIR_PLLRDYF (1u << 4)
 #define RCC_APB1_I2C1 (1u << 21)
 #define RCC_APB1_I2C2 (1u << 22)
 #define RCC_APB1_SPI2 (1u << 14)
@@ -1035,6 +1040,12 @@ static void test_rcc(void)
 		return;
 	RCC_CFGR = 1u;
 	if (!expect_eq("RCC-002.CFGR", RCC_CFGR & 0xFu, 0x5u)) return;
+	if (!expect_eq("RCC-002.CIR", RCC_CIR & (RCC_CIR_HSIRDYF | RCC_CIR_HSERDYF | RCC_CIR_PLLRDYF),
+	               RCC_CIR_HSIRDYF | RCC_CIR_HSERDYF | RCC_CIR_PLLRDYF))
+		return;
+	RCC_CIR = (1u << 18) | (1u << 19) | (1u << 20);
+	if (!expect_eq("RCC-002.CIRCLR", RCC_CIR & (RCC_CIR_HSIRDYF | RCC_CIR_HSERDYF | RCC_CIR_PLLRDYF), 0u))
+		return;
 	pass_test("RCC-002: oscillator ready and system-clock status");
 
 	RCC_APB1ENR = 0xFFFFFFFFu;
@@ -1097,6 +1108,14 @@ static void test_gpio_exti(void)
 	if (!expect_eq("GPIO-003.IRQ", g_log[mon.from].irq_id, IRQ_EXTI1)) return;
 	if (!expect_eq("GPIO-003.CLEAR", EXTI_PR & (1u << 1u), 1u << 1u)) return;
 	pass_test("GPIO-003: software interrupt respects mask and pending");
+
+	AFIO_MAPR = 0xFFFFFFFFu;
+	AFIO_EXTICR1 = 0x12345678u;
+	AFIO_MAPR2 = 0xFFFFFFFFu;
+	if (!expect_eq("GPIO-004.MAPR", AFIO_MAPR, 0x0F00FFFFu)) return;
+	if (!expect_eq("GPIO-004.EXTICR1", AFIO_EXTICR1, 0x12345678u)) return;
+	if (!expect_eq("GPIO-004.MAPR2", AFIO_MAPR2, 0x00003FFFu)) return;
+	pass_test("GPIO-004: AFIO register masks and mapping storage");
 }
 
 static void usart_init(void)
@@ -1378,6 +1397,7 @@ static void test_dma_crc(void)
 	put_str("\r\n--- DMA and CRC Test ---\r\n");
 	I2cMonitor mon;
 	(void)mon;
+	unsigned int from;
 	uintptr_t dma_src = (uintptr_t)&g_dma_src_words[0];
 	uintptr_t dma_dst = (uintptr_t)&g_dma_dst_words[0];
 
@@ -1403,6 +1423,23 @@ static void test_dma_crc(void)
 	if (!expect_eq("DMA-001.DST0", g_dma_dst_words[0], 0x11223344u)) return;
 	if (!expect_eq("DMA-001.DST1", g_dma_dst_words[1], 0x55667788u)) return;
 	pass_test("DMA-001: DMA1 channel 1 mem2mem copy and interrupt");
+
+	DMA1_IFCR = DMA_IFCR_CGIF1 | DMA_IFCR_CTCIF1 | DMA_IFCR_CHTIF1 | DMA_IFCR_CTEIF1;
+	g_dma_src_words[0] = 0x99AABBCCu;
+	g_dma_src_words[1] = 0xDDEEFF00u;
+	g_dma_dst_words[0] = 0u;
+	g_dma_dst_words[1] = 0u;
+	DMA1_CCR1 = 0u;
+	DMA1_CNDTR1 = 2u;
+	i2c_clear_log();
+	from = g_log_count;
+	DMA1_CCR1 = DMA_CCR_MEM2MEM | DMA_CCR_MINC | DMA_CCR_PINC | DMA_CCR_MSIZE_32 |
+	            DMA_CCR_PSIZE_32 | DMA_CCR_EN;
+	if (!expect_eq("DMA-001B.LOG", g_log_count, from)) return;
+	if (!expect_eq("DMA-001B.ISR", DMA1_ISR & DMA_ISR_TCIF1, DMA_ISR_TCIF1)) return;
+	if (!expect_eq("DMA-001B.DST0", g_dma_dst_words[0], 0x99AABBCCu)) return;
+	if (!expect_eq("DMA-001B.DST1", g_dma_dst_words[1], 0xDDEEFF00u)) return;
+	pass_test("DMA-001B: DMA completion updates status without interrupt");
 
 	CRC_CR = 1u;
 	if (!expect_eq("CRC-001.RESET", CRC_DR, 0xFFFFFFFFu)) return;
