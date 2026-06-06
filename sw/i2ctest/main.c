@@ -2202,6 +2202,14 @@ static void test_usb_fs(void)
 	if (!expect_eq("USB-003.CLEAR", USB_ISTR & (USB_ISTR_RESET | USB_ISTR_CTR), 0u)) return;
 	pass_test("USB-003: control-triggered interrupt and W0C status");
 
+	i2c_clear_log();
+	USB_CNTR = USB_CNTR_CTRM;
+	USB_ISTR = 0u;
+	USB_CNTR = USB_CNTR_RESETM;
+	if (!expect_eq("USB-003B.LOG", g_log_count, 0u)) return;
+	if (!expect_true("USB-003B", (USB_ISTR & USB_ISTR_RESET) != 0u, "RESET status missing without IRQ")) return;
+	pass_test("USB-003B: reset status updates without interrupt");
+
 	RCC_APB1RSTR = RCC_APB1_USB;
 	RCC_APB1RSTR = 0u;
 	if (!expect_eq("USB-004.RESET", USB_CNTR, 0u)) return;
@@ -2251,6 +2259,13 @@ static void test_otg_fs(void)
 	OTG_GUSBCFG = 0u;
 	if (!expect_eq("OTG-003.MODECLR", OTG_GUSBCFG, 0u)) return;
 	pass_test("OTG-003: force-device-mode event and clear");
+
+	i2c_clear_log();
+	OTG_GINTMSK = 0u;
+	OTG_GUSBCFG = OTG_GUSBCFG_FDMOD;
+	if (!expect_eq("OTG-003B.LOG", g_log_count, 0u)) return;
+	if (!expect_true("OTG-003B", (OTG_GINTSTS & OTG_GINTSTS_ENUMDNE) != 0u, "ENUMDNE status missing without IRQ")) return;
+	pass_test("OTG-003B: device-mode status updates without interrupt");
 }
 
 static void test_eth(void)
