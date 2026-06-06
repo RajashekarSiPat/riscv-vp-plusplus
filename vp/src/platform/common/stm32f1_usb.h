@@ -28,6 +28,7 @@ public:
 
 	void reset() {
 		m_ep.fill(0u);
+		m_pma.fill(0u);
 		m_cntr = 0u;
 		m_istr = 0u;
 		m_fnr = 0u;
@@ -49,6 +50,8 @@ private:
 	static constexpr uint64_t OFF_FNR = 0x48u;
 	static constexpr uint64_t OFF_DADDR = 0x4Cu;
 	static constexpr uint64_t OFF_BTABLE = 0x50u;
+	static constexpr uint64_t OFF_PMA_BASE = 0x400u;
+	static constexpr uint64_t OFF_PMA_LIMIT = 0x800u;
 
 	static constexpr uint32_t CNTR_RESETM = 1u << 10;
 	static constexpr uint32_t CNTR_CTRM = 1u << 15;
@@ -61,6 +64,7 @@ private:
 	static constexpr uint32_t BTABLE_RW_MASK = 0x1FFFu;
 
 	std::array<uint32_t, 8> m_ep{};
+	std::array<uint8_t, 1024> m_pma{};
 	uint32_t m_cntr = 0u;
 	uint32_t m_istr = 0u;
 	uint32_t m_fnr = 0u;
@@ -152,6 +156,25 @@ private:
 			result = m_btable;
 			break;
 		default:
+			if (trans.get_address() >= OFF_PMA_BASE && trans.get_address() < OFF_PMA_LIMIT) {
+				const uint64_t local = trans.get_address() - OFF_PMA_BASE;
+				const uint32_t len = trans.get_data_length();
+				if (local + len > m_pma.size()) {
+					trans.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
+					return;
+				}
+				if (write) {
+					for (uint32_t i = 0u; i < len; ++i) {
+						m_pma[local + i] = trans.get_data_ptr()[i];
+					}
+				} else {
+					for (uint32_t i = 0u; i < len; ++i) {
+						trans.get_data_ptr()[i] = m_pma[local + i];
+					}
+				}
+				trans.set_response_status(tlm::TLM_OK_RESPONSE);
+				return;
+			}
 			trans.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
 			return;
 		}

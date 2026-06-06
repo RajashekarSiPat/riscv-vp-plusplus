@@ -114,6 +114,32 @@ private:
 		std::memcpy(trans.get_data_ptr(), &value, std::min(trans.get_data_length(), 4u));
 	}
 
+	std::array<uint8_t, 6> current_mac() const {
+		return {
+			static_cast<uint8_t>(m_mac_low & 0xFFu),
+			static_cast<uint8_t>((m_mac_low >> 8) & 0xFFu),
+			static_cast<uint8_t>((m_mac_low >> 16) & 0xFFu),
+			static_cast<uint8_t>((m_mac_low >> 24) & 0xFFu),
+			static_cast<uint8_t>(m_mac_high & 0xFFu),
+			static_cast<uint8_t>((m_mac_high >> 8) & 0xFFu),
+		};
+	}
+
+	bool frame_matches_mac() const {
+		if (m_receive_size < 6u) {
+			return true;
+		}
+		const auto mac = current_mac();
+		bool broadcast = true;
+		bool match = true;
+		for (unsigned i = 0u; i < 6u; ++i) {
+			const uint8_t dst = m_frame[i];
+			broadcast &= dst == 0xFFu;
+			match &= dst == mac[i];
+		}
+		return broadcast || match;
+	}
+
 	uint32_t mem_read32(uint64_t addr) {
 		uint32_t value = 0u;
 		tlm::tlm_generic_payload trans;
@@ -167,6 +193,11 @@ private:
 		if (!m_has_frame) {
 			return;
 		}
+		if (!frame_matches_mac()) {
+			m_has_frame = false;
+			m_status = 0u;
+			return;
+		}
 		const uint32_t len = m_receive_size;
 		for (uint32_t i = 0u; i < len; i += 4u) {
 			uint32_t word = 0u;
@@ -195,6 +226,7 @@ private:
 		m_macvlantr = 0u;
 		m_dmaomr = 0u;
 		m_dmasr = 0u;
+		m_dmaier = 0u;
 		m_has_frame = false;
 	}
 

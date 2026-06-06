@@ -91,7 +91,7 @@ struct I2CTestOptions : Options {
 	addr_t fsmc_start_addr = stm32f1::FSMC;
 	addr_t fsmc_end_addr = stm32f1::FSMC + 0xfffull;
 	addr_t usb_start_addr = stm32f1::USB_FS;
-	addr_t usb_end_addr = stm32f1::USB_FS + 0x3ffull;
+	addr_t usb_end_addr = stm32f1::USB_FS + 0x7ffull;
 	addr_t otgfs_start_addr = stm32f1::OTG_FS;
 	addr_t otgfs_end_addr = stm32f1::OTG_FS + 0x3ffffull;
 	addr_t eth_start_addr = stm32f1::ETH;

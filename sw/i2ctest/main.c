@@ -14,6 +14,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 
 #define MMIO32(a) (*(volatile uint32_t *)(uintptr_t)(a))
 #define MMIO64(a) (*(volatile uint64_t *)(uintptr_t)(a))
+#define MMIO8(a) (*(volatile uint8_t *)(uintptr_t)(a))
 
 #define UC_TBUF MMIO32(0x09004004UL)
 #define EXITER MMIO32(0x09010000UL)
@@ -365,6 +366,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define USB_FNR MMIO32(USB_BASE + 0x48UL)
 #define USB_DADDR MMIO32(USB_BASE + 0x4CUL)
 #define USB_BTABLE MMIO32(USB_BASE + 0x50UL)
+#define USB_PMA(off) MMIO8(USB_BASE + 0x400UL + (off))
 #define USB_CNTR_RESETM (1u << 10)
 #define USB_CNTR_CTRM (1u << 15)
 #define USB_ISTR_RESET (1u << 10)
@@ -670,8 +672,8 @@ volatile I2cIrqEvent g_log[LOG_SIZE];
 volatile unsigned int g_log_count = 0u;
 static volatile uint32_t g_dma_src_words[2];
 static volatile uint32_t g_dma_dst_words[2];
-static volatile uint32_t g_eth_src_words[4];
-static volatile uint32_t g_eth_dst_words[4];
+static volatile uint8_t g_eth_src_frame[64] __attribute__((aligned(4)));
+static volatile uint8_t g_eth_dst_frame[64] __attribute__((aligned(4)));
 static int g_pass = 0;
 static int g_fail = 0;
 
@@ -1752,6 +1754,14 @@ static void test_usb_fs(void)
 	if (!expect_eq("USB-002.BTABLE", USB_BTABLE, 0x1FFFu)) return;
 	pass_test("USB-002: writable masks");
 
+	for (unsigned i = 0u; i < 16u; ++i) {
+		USB_PMA(i) = (uint8_t)(0xA0u + i);
+	}
+	for (unsigned i = 0u; i < 16u; ++i) {
+		if (!expect_eq("USB-002.PMA", USB_PMA(i), 0xA0u + i)) return;
+	}
+	pass_test("USB-002B: PMA read/write window");
+
 	i2c_clear_log();
 	USB_CNTR = USB_CNTR_RESETM | USB_CNTR_CTRM;
 	if (!i2c_wait_n(1u)) {
@@ -1822,13 +1832,24 @@ static void test_eth(void)
 	if (!expect_eq("ETH-002.MAC_LOW", ETH_MAC_LOW, 0x11223344u)) return;
 	pass_test("ETH-002: writable address registers");
 
-	for (unsigned i = 0u; i < 4u; ++i) {
-		g_eth_src_words[i] = 0x11110000u + i;
-		g_eth_dst_words[i] = 0u;
+	for (unsigned i = 0u; i < sizeof(g_eth_src_frame); ++i) {
+		g_eth_src_frame[i] = 0u;
+		g_eth_dst_frame[i] = 0u;
 	}
-	ETH_SEND_SRC = (uint32_t)(uintptr_t)&g_eth_src_words[0];
-	ETH_RECV_DST = (uint32_t)(uintptr_t)&g_eth_dst_words[0];
-	ETH_SEND_SIZE = sizeof(g_eth_src_words);
+	ETH_MAC_LOW = 0x44332211u;
+	ETH_MAC_HIGH = 0x00006655u;
+	g_eth_src_frame[0] = 0x11u;
+	g_eth_src_frame[1] = 0x22u;
+	g_eth_src_frame[2] = 0x33u;
+	g_eth_src_frame[3] = 0x44u;
+	g_eth_src_frame[4] = 0x55u;
+	g_eth_src_frame[5] = 0x66u;
+	for (unsigned i = 6u; i < 64u; ++i) {
+		g_eth_src_frame[i] = (uint8_t)(0x80u + i);
+	}
+	ETH_SEND_SRC = (uint32_t)(uintptr_t)&g_eth_src_frame[0];
+	ETH_RECV_DST = (uint32_t)(uintptr_t)&g_eth_dst_frame[0];
+	ETH_SEND_SIZE = sizeof(g_eth_src_frame);
 	i2c_clear_log();
 	ETH_STATUS = ETH_STATUS_SEND;
 	if (!i2c_wait_n(1u)) {
@@ -1843,12 +1864,40 @@ static void test_eth(void)
 		return;
 	}
 	if (!expect_eq("ETH-003.IRQ2", g_log[1].irq_id, IRQ_ETH)) return;
-	for (unsigned i = 0u; i < 4u; ++i) {
-		if (!expect_eq("ETH-003.LOOP", g_eth_dst_words[i], 0x11110000u + i)) return;
+	for (unsigned i = 0u; i < 64u; ++i) {
+		if (!expect_eq("ETH-003.LOOP", g_eth_dst_frame[i], g_eth_src_frame[i])) return;
 	}
 	ETH_DMASR = ETH_DMASR_TI | ETH_DMASR_RI | ETH_DMASR_NIS;
 	if (!expect_eq("ETH-003.CLEAR", ETH_DMASR & (ETH_DMASR_TI | ETH_DMASR_RI | ETH_DMASR_NIS), 0u)) return;
 	pass_test("ETH-003: send/receive loopback and DMA status");
+
+	for (unsigned i = 0u; i < 64u; ++i) {
+		g_eth_src_frame[i] = 0u;
+		g_eth_dst_frame[i] = 0u;
+	}
+	g_eth_src_frame[0] = 0x00u;
+	g_eth_src_frame[1] = 0x11u;
+	g_eth_src_frame[2] = 0x22u;
+	g_eth_src_frame[3] = 0x33u;
+	g_eth_src_frame[4] = 0x44u;
+	g_eth_src_frame[5] = 0x55u;
+	ETH_SEND_SRC = (uint32_t)(uintptr_t)&g_eth_src_frame[0];
+	ETH_RECV_DST = (uint32_t)(uintptr_t)&g_eth_dst_frame[0];
+	ETH_SEND_SIZE = sizeof(g_eth_src_frame);
+	i2c_clear_log();
+	ETH_STATUS = ETH_STATUS_SEND;
+	if (!i2c_wait_n(1u)) {
+		fail_test("ETH-003B", "send interrupt timeout");
+		return;
+	}
+	ETH_STATUS = ETH_STATUS_RECV;
+	if (!expect_eq("ETH-003B.IRQ_COUNT", g_log_count, 1u)) return;
+	if (!expect_eq("ETH-003B.STATUS", ETH_STATUS, 0u)) return;
+	if (!expect_eq("ETH-003B.DMASR", ETH_DMASR & ETH_DMASR_RI, 0u)) return;
+	for (unsigned i = 0u; i < 64u; ++i) {
+		if (!expect_eq("ETH-003B.DROP", g_eth_dst_frame[i], 0u)) return;
+	}
+	pass_test("ETH-003B: destination filter drops unmatched frames");
 
 	ETH_DMABMR = ETH_DMABMR_SR;
 	if (!expect_eq("ETH-004.RESET_MACCR", ETH_MACCR, 0u)) return;
