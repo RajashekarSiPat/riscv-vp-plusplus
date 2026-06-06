@@ -185,6 +185,8 @@ private:
 			if (write) {
 				m_cnth = value & 0xFFFFu;
 				m_counter = (m_cnth << 16u) | m_cntl;
+				m_alarm_fired = false;
+				check_alarm();
 			}
 			result = m_cnth;
 			break;
@@ -192,6 +194,8 @@ private:
 			if (write) {
 				m_cntl = value & 0xFFFFu;
 				m_counter = (m_cnth << 16u) | m_cntl;
+				m_alarm_fired = false;
+				check_alarm();
 			}
 			result = m_cntl;
 			break;

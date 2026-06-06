@@ -1346,6 +1346,7 @@ static void test_dma_crc(void)
 static void test_backup_domain(void)
 {
 	put_str("\r\n--- Backup Domain and RTC Test ---\r\n");
+	I2cMonitor mon;
 	unsigned int from;
 
 	if (!expect_eq("BD-001.PWR", PWR_CR, 0u)) return;
@@ -1437,6 +1438,17 @@ static void test_backup_domain(void)
 	if (!expect_true("BD-005B", (g_log[1].sr1 & RTC_CRL_ALRF) != 0u, "alarm flag missing")) return;
 	RTC_CRL = RTC_CRL_ALRF;
 	if (!expect_eq("BD-005B.CLEAR1", RTC_CRL & RTC_CRL_ALRF, 0u)) return;
+	RTC_CNTL = 0u;
+	RTC_ALRL = 2u;
+	monitor_begin(&mon);
+	(void)RTC_CNTL;
+	if (!i2c_wait_n(mon.from + 1u)) {
+		fail_test("BD-005B", "RTC re-arm interrupt timeout");
+		return;
+	}
+	if (!expect_eq("BD-005B.IRQ2", g_log[mon.from].irq_id, IRQ_RTC)) return;
+	if (!expect_true("BD-005B", (g_log[mon.from].sr1 & RTC_CRL_ALRF) != 0u, "re-armed alarm missing")) return;
+	RTC_CRL = RTC_CRL_ALRF;
 	pass_test("BD-005B: RTC second and alarm interrupts");
 
 	RCC_BDCR = RCC_BDCR_BDRST;
