@@ -159,6 +159,8 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define TIM2_CCR1 MMIO32(TIM2_BASE + 0x34UL)
 
 #define TIM_CR1_CEN (1u << 0)
+#define TIM_CR1_UDIS (1u << 1)
+#define TIM_CR1_OPM (1u << 3)
 #define TIM_DIER_UIE (1u << 0)
 #define TIM_DIER_CC1IE (1u << 1)
 #define TIM_SR_UIF (1u << 0)
@@ -1548,6 +1550,22 @@ static void test_timers(void)
 	TIM1_SR = TIM_SR_CC1IF;
 	if (!expect_eq("TIM-001B.CLEAR", TIM1_SR & TIM_SR_CC1IF, 0u)) return;
 	pass_test("TIM-001B: TIM1 compare-match interrupt");
+
+	TIM1_DIER = TIM_DIER_UIE;
+	TIM1_SR = 0u;
+	TIM1_CNT = 0u;
+	TIM1_PSC = 0u;
+	TIM1_ARR = 0u;
+	TIM1_CR1 = TIM_CR1_UDIS | TIM_CR1_CEN;
+	(void)TIM1_CNT;
+	if (!expect_eq("TIM-001C.UIF", TIM1_SR & TIM_SR_UIF, 0u)) return;
+	if (!expect_eq("TIM-001C.CEN", TIM1_CR1 & TIM_CR1_CEN, TIM_CR1_CEN)) return;
+	TIM1_SR = 0u;
+	TIM1_CR1 = TIM_CR1_OPM | TIM_CR1_CEN;
+	(void)TIM1_CNT;
+	if (!expect_true("TIM-001C", (TIM1_SR & TIM_SR_UIF) != 0u, "one-pulse UIF missing")) return;
+	if (!expect_eq("TIM-001C.STOP", TIM1_CR1 & TIM_CR1_CEN, 0u)) return;
+	pass_test("TIM-001C: update-disable and one-pulse mode");
 
 	TIM1_CR1 = TIM_CR1_CEN;
 	RCC_APB2ENR &= ~RCC_APB2_TIM1;
