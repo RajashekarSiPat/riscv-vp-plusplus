@@ -70,8 +70,9 @@ the I2C regression does, rather than validating register storage alone.
 | DAC | Minimal register-level model with trigger/output regression |
 | CAN1 | Minimal register-level loopback model with interrupt regression |
 | SDIO | Minimal register/FIFO model with command and transfer regression |
+| FSMC | Minimal register and external-bank model with read/write regression |
 | USART | Existing `usart2test` remains a custom test UART, not the RM0008 USART register model |
-| Remaining RM0008 blocks | Not implemented |
+| Remaining RM0008 blocks | USB device/OTG FS and Ethernet MAC/DMA remain |
 
 ## Modeling boundaries
 

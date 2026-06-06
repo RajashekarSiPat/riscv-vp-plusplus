@@ -6,7 +6,7 @@
  */
 
 #ifndef TEST_MASK
-#define TEST_MASK 0x1FFFFFu
+#define TEST_MASK 0x3FFFFFu
 #endif
 volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_MASK;
 
@@ -84,6 +84,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define RCC_APB1_TIM5 (1u << 3)
 #define RCC_AHB_DMA1 (1u << 0)
 #define RCC_AHB_CRC (1u << 6)
+#define RCC_AHB_FSMC (1u << 8)
 #define RCC_AHB_SDIO (1u << 10)
 #define RCC_APB2_AFIO (1u << 0)
 #define RCC_APB2_GPIOA (1u << 2)
@@ -316,6 +317,36 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define SDIO_MASK_CMDRENDIE (1u << 6)
 #define SDIO_MASK_CMDSENTIE (1u << 7)
 #define SDIO_MASK_DATAENDIE (1u << 8)
+
+#define FSMC_BASE 0xA0000000UL
+#define FSMC_BCR1 MMIO32(FSMC_BASE + 0x00UL)
+#define FSMC_BTR1 MMIO32(FSMC_BASE + 0x04UL)
+#define FSMC_BCR2 MMIO32(FSMC_BASE + 0x08UL)
+#define FSMC_BTR2 MMIO32(FSMC_BASE + 0x0CUL)
+#define FSMC_BCR3 MMIO32(FSMC_BASE + 0x10UL)
+#define FSMC_BTR3 MMIO32(FSMC_BASE + 0x14UL)
+#define FSMC_BCR4 MMIO32(FSMC_BASE + 0x18UL)
+#define FSMC_BTR4 MMIO32(FSMC_BASE + 0x1CUL)
+#define FSMC_BCR_MBKEN (1u << 0)
+#define FSMC_BCR_MUXEN (1u << 1)
+#define FSMC_BCR_MTYP_MASK (0x3u << 2)
+#define FSMC_BCR_MWID_MASK (0x3u << 4)
+#define FSMC_BCR_FACCEN (1u << 6)
+#define FSMC_BCR_BURSTEN (1u << 8)
+#define FSMC_BCR_WAITPOL (1u << 9)
+#define FSMC_BCR_WRAPMOD (1u << 10)
+#define FSMC_BCR_WAITCFG (1u << 11)
+#define FSMC_BCR_WREN (1u << 12)
+#define FSMC_BCR_WAITEN (1u << 13)
+#define FSMC_BCR_EXTMOD (1u << 14)
+#define FSMC_BCR_ASYNCWAIT (1u << 15)
+#define FSMC_BCR_CBURSTRW (1u << 19)
+#define FSMC_BCR_CCLKEN (1u << 20)
+#define FSMC_BCR_RW_MASK (FSMC_BCR_MBKEN | FSMC_BCR_MUXEN | FSMC_BCR_MTYP_MASK | FSMC_BCR_MWID_MASK | \
+                          FSMC_BCR_FACCEN | FSMC_BCR_BURSTEN | FSMC_BCR_WAITPOL | FSMC_BCR_WRAPMOD | \
+                          FSMC_BCR_WAITCFG | FSMC_BCR_WREN | FSMC_BCR_WAITEN | FSMC_BCR_EXTMOD | \
+                          FSMC_BCR_ASYNCWAIT | FSMC_BCR_CBURSTRW | FSMC_BCR_CCLKEN)
+#define FSMC_BTR_RW_MASK 0x0FFFFFFFu
 
 #define I2C0_CR1 MMIO32(I2C0_BASE + 0x00UL)
 #define I2C0_CR2 MMIO32(I2C0_BASE + 0x04UL)
@@ -808,6 +839,7 @@ static int i2c0_addr10_write(unsigned int addr10, unsigned int data);
 static int i2c0_addr10_read(unsigned int addr10, unsigned int source, unsigned int *data);
 static void i2c_finish(void);
 static int start_addr_write(unsigned int addr);
+static void test_fsmc(void);
 
 extern void trap_entry(void);
 void trap_handler(void);
@@ -1589,6 +1621,45 @@ static void test_sdio(void)
 	if (!expect_eq("SDIO-005.RESET_STA", SDIO_STA, 0u)) return;
 	if (!expect_eq("SDIO-005.RESET_FIFO", SDIO_FIFOCNT, 0u)) return;
 	pass_test("SDIO-005: AHB gate and reset");
+}
+
+static void test_fsmc(void)
+{
+	put_str("\r\n--- FSMC Register and External Bank Test ---\r\n");
+
+	if (!expect_eq("FSMC-001.BCR1", FSMC_BCR1, 0u)) return;
+	if (!expect_eq("FSMC-001.BTR1", FSMC_BTR1, 0u)) return;
+	if (!expect_eq("FSMC-001.BCR2", FSMC_BCR2, 0u)) return;
+	if (!expect_eq("FSMC-001.BTR2", FSMC_BTR2, 0u)) return;
+	pass_test("FSMC-001: reset values");
+
+	RCC_AHBENR |= RCC_AHB_FSMC;
+	FSMC_BCR1 = 0xFFFFFFFFu;
+	FSMC_BTR1 = 0xFFFFFFFFu;
+	if (!expect_eq("FSMC-002.BCR1", FSMC_BCR1, FSMC_BCR_RW_MASK)) return;
+	if (!expect_eq("FSMC-002.BTR1", FSMC_BTR1, FSMC_BTR_RW_MASK)) return;
+	pass_test("FSMC-002: writable masks");
+
+	FSMC_BCR1 = FSMC_BCR_MBKEN | FSMC_BCR_WREN;
+	MMIO32(0x60000000UL) = 0x11223344u;
+	MMIO32(0x60000004UL) = 0x55667788u;
+	if (!expect_eq("FSMC-003.READ0", MMIO32(0x60000000UL), 0x11223344u)) return;
+	if (!expect_eq("FSMC-003.READ1", MMIO32(0x60000004UL), 0x55667788u)) return;
+	pass_test("FSMC-003: bank1 window loopback");
+
+	RCC_AHBENR &= ~RCC_AHB_FSMC;
+	if (!expect_eq("FSMC-004.GATED_BCR1", FSMC_BCR1, 0u)) return;
+	if (!expect_eq("FSMC-004.GATED_BANK", MMIO32(0x60000000UL), 0u)) return;
+	RCC_AHBENR |= RCC_AHB_FSMC;
+	if (!expect_eq("FSMC-004.RETAIN_BCR1", FSMC_BCR1, FSMC_BCR_MBKEN | FSMC_BCR_WREN)) return;
+	pass_test("FSMC-004: AHB gate preserves register state");
+
+	RCC_AHBRSTR = RCC_AHB_FSMC;
+	RCC_AHBRSTR = 0u;
+	if (!expect_eq("FSMC-005.RESET_BCR1", FSMC_BCR1, 0u)) return;
+	if (!expect_eq("FSMC-005.RESET_BTR1", FSMC_BTR1, 0u)) return;
+	if (!expect_eq("FSMC-005.RESET_BANK", MMIO32(0x60000000UL), 0u)) return;
+	pass_test("FSMC-005: AHB reset clears controller and disables bank");
 }
 
 static void i2c_stop(void)
@@ -2679,6 +2750,7 @@ void isr_main(void)
 	if (g_test_mask & 0x40000u) test_dac();
 	if (g_test_mask & 0x80000u) test_can();
 	if (g_test_mask & 0x100000u) test_sdio();
+	if (g_test_mask & 0x200000u) test_fsmc();
 	if (g_test_mask & 0x1000u) test_spi();
 	if (g_test_mask & 0x800u) test_usart();
 	i2c_init();

@@ -26,6 +26,7 @@ static constexpr uint64_t ADC3 = 0x40013C00ull + PERIPH_ALIAS;
 static constexpr uint64_t DAC = 0x40007400ull + PERIPH_ALIAS;
 static constexpr uint64_t CAN1 = 0x40006400ull + PERIPH_ALIAS;
 static constexpr uint64_t SDIO = 0x40018000ull + PERIPH_ALIAS;
+static constexpr uint64_t FSMC = 0xA0000000ull;
 static constexpr uint64_t RTC = 0x40002800ull + PERIPH_ALIAS;
 static constexpr uint64_t BKP = 0x40006C00ull + PERIPH_ALIAS;
 static constexpr uint64_t PWR = 0x40007000ull + PERIPH_ALIAS;
