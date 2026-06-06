@@ -1524,6 +1524,23 @@ static void test_backup_domain(void)
 	RTC_CRL = RTC_CRL_ALRF;
 	pass_test("BD-005B: RTC second and alarm interrupts");
 
+	i2c_clear_log();
+	from = g_log_count;
+	RTC_CRH = 0u;
+	RTC_CRL = 0u;
+	(void)RTC_CNTL;
+	if (!expect_eq("BD-005C.LOG0", g_log_count, from)) return;
+	if (!expect_true("BD-005C.SECF", (RTC_CRL & RTC_CRL_SECF) != 0u, "second flag missing without IRQ")) return;
+	RTC_CRL = RTC_CRL_SECF;
+	RTC_CRH = RTC_CRH_ALRIE;
+	RTC_ALRL = 2u;
+	RTC_CRL = 0u;
+	(void)RTC_CNTL;
+	if (!expect_eq("BD-005C.LOG1", g_log_count, from)) return;
+	if (!expect_true("BD-005C.ALRF", (RTC_CRL & RTC_CRL_ALRF) != 0u, "alarm flag missing without IRQ")) return;
+	RTC_CRL = RTC_CRL_ALRF;
+	pass_test("BD-005C: RTC flags update without interrupts");
+
 	RCC_BDCR = RCC_BDCR_BDRST;
 	RCC_BDCR = RCC_BDCR_RTCEN;
 	if (!expect_eq("BD-006.DR1", BKP_DR1, 0u)) return;
