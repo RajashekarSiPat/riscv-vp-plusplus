@@ -25,6 +25,10 @@ SDIO is modeled at a minimal register/FIFO level with command completion,
 response registers, FIFO loopback, and RCC gating/reset coverage.
 FSMC is modeled with register reset/mask behavior plus a sparse external-bank
 window at `0x60000000` for directed read/write regression.
+USB device FS and OTG FS are modeled with reset/control status registers and
+interrupt delivery through the PLIC.
+Ethernet is modeled with a minimal mailbox-style send/receive path, MAC
+registers, and DMA status/reset coverage.
 
 STM32 peripheral offsets are exposed through a `+0x01000000` alias because the
 RISC-V PLIC occupies the original `0x40000000` peripheral window. For example,
@@ -68,3 +72,6 @@ make sim
 | `0x80000` | CAN1 register, loopback, and interrupt regression |
 | `0x100000` | SDIO register, response, FIFO, and reset regression |
 | `0x200000` | FSMC register and external-bank regression |
+| `0x400000` | USB device FS register and interrupt regression |
+| `0x800000` | OTG FS register and interrupt regression |
+| `0x1000000` | Ethernet mailbox, MAC, and DMA regression |

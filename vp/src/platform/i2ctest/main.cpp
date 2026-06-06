@@ -12,11 +12,14 @@
 #include "platform/common/bus.h"
 #include "platform/common/fe310_plic.h"
 #include "platform/common/stm32f1_adc.h"
+#include "platform/common/stm32f1_eth.h"
 #include "platform/common/stm32f1_can.h"
 #include "platform/common/stm32f1_dac.h"
 #include "platform/common/stm32f1_flash.h"
 #include "platform/common/stm32f1_fsmc.h"
+#include "platform/common/stm32f1_otg_fs.h"
 #include "platform/common/stm32f1_sdio.h"
+#include "platform/common/stm32f1_usb.h"
 #include "platform/common/i2c_bus.h"
 #include "platform/common/i2c_stm32.h"
 #include "platform/common/memory.h"
@@ -87,6 +90,12 @@ struct I2CTestOptions : Options {
 	addr_t sdio_end_addr = stm32f1::SDIO + 0xffull;
 	addr_t fsmc_start_addr = stm32f1::FSMC;
 	addr_t fsmc_end_addr = stm32f1::FSMC + 0xfffull;
+	addr_t usb_start_addr = stm32f1::USB_FS;
+	addr_t usb_end_addr = stm32f1::USB_FS + 0x3ffull;
+	addr_t otgfs_start_addr = stm32f1::OTG_FS;
+	addr_t otgfs_end_addr = stm32f1::OTG_FS + 0x3ffffull;
+	addr_t eth_start_addr = stm32f1::ETH;
+	addr_t eth_end_addr = stm32f1::ETH + 0x1fffull;
 	addr_t crc_start_addr = stm32f1::CRC;
 	addr_t crc_end_addr = stm32f1::CRC + 0xffull;
 	addr_t spi1_start_addr = stm32f1::SPI1;
@@ -184,6 +193,9 @@ int sc_main(int argc, char **argv) {
 	Stm32f1Can can1("CAN1");
 	Stm32f1Fsmc fsmc("FSMC");
 	Stm32f1FsmcBank fsmc_bank("FSMC_BANK");
+	Stm32f1UsbDeviceFs usb_dev("USBDEV");
+	Stm32f1OtgFs otg_fs("OTGFS");
+	Stm32f1Eth eth("ETH");
 	Stm32f1Sdio sdio("SDIO");
 	Stm32f1Dma dma1("DMA1");
 	Stm32f1Crc crc("CRC");
@@ -229,11 +241,48 @@ int sc_main(int argc, char **argv) {
 	rcc.bind_apb1(14u, [&](bool enabled) { spi2.set_clock_enabled(enabled); }, [&]() { spi2.peripheral_reset(); });
 	rcc.bind_apb1(29u, [&](bool enabled) { dac.set_clock_enabled(enabled); }, [&]() { dac.peripheral_reset(); });
 	rcc.bind_apb1(25u, [&](bool enabled) { can1.set_clock_enabled(enabled); }, [&]() { can1.peripheral_reset(); });
+	rcc.bind_apb1(23u, [&](bool enabled) { usb_dev.set_clock_enabled(enabled); }, [&]() { usb_dev.peripheral_reset(); });
 	rcc.bind_ahb(8u, [&](bool enabled) { fsmc.set_clock_enabled(enabled); fsmc_bank.set_clock_enabled(enabled); },
 	              [&]() {
 		              fsmc.peripheral_reset();
 		              fsmc_bank.peripheral_reset();
 	              });
+	rcc.bind_ahb(12u, [&](bool enabled) { otg_fs.set_clock_enabled(enabled); }, [&]() { otg_fs.peripheral_reset(); });
+	uint32_t eth_clk_bits = 0u;
+	auto update_eth_clock = [&]() {
+		const uint32_t required = stm32f1::RCC_AHB_ETHMAC | stm32f1::RCC_AHB_ETHMACTX | stm32f1::RCC_AHB_ETHMACRX;
+		eth.set_clock_enabled((eth_clk_bits & required) == required);
+	};
+	rcc.bind_ahb(14u,
+	             [&](bool enabled) {
+		             if (enabled) {
+			             eth_clk_bits |= stm32f1::RCC_AHB_ETHMAC;
+		             } else {
+			             eth_clk_bits &= ~stm32f1::RCC_AHB_ETHMAC;
+		             }
+		             update_eth_clock();
+	             },
+	             [&]() { eth.peripheral_reset(); });
+	rcc.bind_ahb(15u,
+	             [&](bool enabled) {
+		             if (enabled) {
+			             eth_clk_bits |= stm32f1::RCC_AHB_ETHMACTX;
+		             } else {
+			             eth_clk_bits &= ~stm32f1::RCC_AHB_ETHMACTX;
+		             }
+		             update_eth_clock();
+	             },
+	             [&]() { eth.peripheral_reset(); });
+	rcc.bind_ahb(16u,
+	             [&](bool enabled) {
+		             if (enabled) {
+			             eth_clk_bits |= stm32f1::RCC_AHB_ETHMACRX;
+		             } else {
+			             eth_clk_bits &= ~stm32f1::RCC_AHB_ETHMACRX;
+		             }
+		             update_eth_clock();
+	             },
+	             [&]() { eth.peripheral_reset(); });
 	rcc.bind_ahb(10u, [&](bool enabled) { sdio.set_clock_enabled(enabled); }, [&]() { sdio.peripheral_reset(); });
 	rcc.bind_apb2(11u, [&](bool enabled) { tim1.set_clock_enabled(enabled); }, [&]() { tim1.peripheral_reset(); });
 	rcc.bind_apb1(0u, [&](bool enabled) { tim2.set_clock_enabled(enabled); }, [&]() { tim2.peripheral_reset(); });
@@ -276,6 +325,12 @@ int sc_main(int argc, char **argv) {
 	can1.irq_rx1 = stm32f1::IRQ_CAN1_RX1;
 	can1.irq_sce = stm32f1::IRQ_CAN1_SCE;
 	fsmc.set_bank1_enable([&](bool enabled) { fsmc_bank.set_enabled(enabled); });
+	usb_dev.plic = &plic;
+	usb_dev.irq_id = stm32f1::IRQ_USB;
+	otg_fs.plic = &plic;
+	otg_fs.irq_id = stm32f1::IRQ_USB;
+	eth.plic = &plic;
+	eth.irq_id = stm32f1::IRQ_ETH;
 	sdio.plic = &plic;
 	sdio.irq_id = stm32f1::IRQ_SDIO;
 	dma1.plic = &plic;
@@ -305,8 +360,8 @@ int sc_main(int argc, char **argv) {
 	tim5.plic = &plic;
 	tim5.irq_id = stm32f1::IRQ_TIM5_UP;
 
-	/* Bus: 2 initiators (ISS and DMA1), 39 targets */
-	SimpleBus<2, 39> bus("Bus", nullptr, opt.break_on_transaction);
+	/* Bus: 3 initiators (ISS, DMA1, ETH) and 42 targets */
+	SimpleBus<3, 42> bus("Bus", nullptr, opt.break_on_transaction);
 
 	{
 		unsigned i = 0;
@@ -340,6 +395,9 @@ int sc_main(int argc, char **argv) {
 		bus.ports[i++] = new PortMapping(opt.can1_start_addr, opt.can1_end_addr, can1);
 		bus.ports[i++] = new PortMapping(opt.fsmc_start_addr, opt.fsmc_end_addr, fsmc);
 		bus.ports[i++] = new PortMapping(0x60000000ull, 0x6fffffffull, fsmc_bank);
+		bus.ports[i++] = new PortMapping(opt.usb_start_addr, opt.usb_end_addr, usb_dev);
+		bus.ports[i++] = new PortMapping(opt.otgfs_start_addr, opt.otgfs_end_addr, otg_fs);
+		bus.ports[i++] = new PortMapping(opt.eth_start_addr, opt.eth_end_addr, eth);
 		bus.ports[i++] = new PortMapping(opt.sdio_start_addr, opt.sdio_end_addr, sdio);
 		bus.ports[i++] = new PortMapping(opt.dma1_start_addr, opt.dma1_end_addr, dma1);
 		bus.ports[i++] = new PortMapping(opt.crc_start_addr, opt.crc_end_addr, crc);
@@ -354,6 +412,7 @@ int sc_main(int argc, char **argv) {
 
 	iss_mem_if.isock.bind(bus.tsocks[0]);
 	dma1.bus_initiator_socket.bind(bus.tsocks[1]);
+	eth.mem_socket.bind(bus.tsocks[2]);
 	{
 		unsigned i = 0;
 		bus.isocks[i++].bind(mem.tsock);
@@ -386,6 +445,9 @@ int sc_main(int argc, char **argv) {
 		bus.isocks[i++].bind(can1.socket);
 		bus.isocks[i++].bind(fsmc.socket);
 		bus.isocks[i++].bind(fsmc_bank.socket);
+		bus.isocks[i++].bind(usb_dev.socket);
+		bus.isocks[i++].bind(otg_fs.socket);
+		bus.isocks[i++].bind(eth.socket);
 		bus.isocks[i++].bind(sdio.socket);
 		bus.isocks[i++].bind(dma1.socket);
 		bus.isocks[i++].bind(crc.socket);

@@ -6,7 +6,7 @@
  */
 
 #ifndef TEST_MASK
-#define TEST_MASK 0x3FFFFFu
+#define TEST_MASK 0x1FFFFFFu
 #endif
 volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_MASK;
 
@@ -26,6 +26,9 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define DAC_BASE 0x41007400UL
 #define CAN1_BASE 0x41006400UL
 #define SDIO_BASE 0x41018000UL
+#define USB_BASE 0x41005C00UL
+#define OTG_BASE 0x50000000UL
+#define ETH_BASE 0x41028000UL
 #define AFIO_BASE 0x41010000UL
 #define EXTI_BASE 0x41010400UL
 #define GPIOA_BASE 0x41010800UL
@@ -86,6 +89,11 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define RCC_AHB_CRC (1u << 6)
 #define RCC_AHB_FSMC (1u << 8)
 #define RCC_AHB_SDIO (1u << 10)
+#define RCC_AHB_OTGFS (1u << 12)
+#define RCC_AHB_ETHMAC (1u << 14)
+#define RCC_AHB_ETHMACTX (1u << 15)
+#define RCC_AHB_ETHMACRX (1u << 16)
+#define RCC_APB1_USB (1u << 23)
 #define RCC_APB2_AFIO (1u << 0)
 #define RCC_APB2_GPIOA (1u << 2)
 #define RCC_APB2_GPIOB (1u << 3)
@@ -348,6 +356,62 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
                           FSMC_BCR_ASYNCWAIT | FSMC_BCR_CBURSTRW | FSMC_BCR_CCLKEN)
 #define FSMC_BTR_RW_MASK 0x0FFFFFFFu
 
+#define USB_EP0R MMIO32(USB_BASE + 0x00UL)
+#define USB_EP1R MMIO32(USB_BASE + 0x04UL)
+#define USB_EP2R MMIO32(USB_BASE + 0x08UL)
+#define USB_EP3R MMIO32(USB_BASE + 0x0CUL)
+#define USB_CNTR MMIO32(USB_BASE + 0x40UL)
+#define USB_ISTR MMIO32(USB_BASE + 0x44UL)
+#define USB_FNR MMIO32(USB_BASE + 0x48UL)
+#define USB_DADDR MMIO32(USB_BASE + 0x4CUL)
+#define USB_BTABLE MMIO32(USB_BASE + 0x50UL)
+#define USB_CNTR_RESETM (1u << 10)
+#define USB_CNTR_CTRM (1u << 15)
+#define USB_ISTR_RESET (1u << 10)
+#define USB_ISTR_CTR (1u << 15)
+
+#define OTG_GOTGCTL MMIO32(OTG_BASE + 0x00UL)
+#define OTG_GOTGINT MMIO32(OTG_BASE + 0x04UL)
+#define OTG_GAHBCFG MMIO32(OTG_BASE + 0x08UL)
+#define OTG_GUSBCFG MMIO32(OTG_BASE + 0x0CUL)
+#define OTG_GRSTCTL MMIO32(OTG_BASE + 0x10UL)
+#define OTG_GINTSTS MMIO32(OTG_BASE + 0x14UL)
+#define OTG_GINTMSK MMIO32(OTG_BASE + 0x18UL)
+#define OTG_GRXFSIZ MMIO32(OTG_BASE + 0x24UL)
+#define OTG_GNPTXFSIZ MMIO32(OTG_BASE + 0x28UL)
+#define OTG_GAHBCFG_GINT (1u << 0)
+#define OTG_GUSBCFG_FDMOD (1u << 30)
+#define OTG_GRSTCTL_CSRST (1u << 0)
+#define OTG_GINTSTS_USBRST (1u << 12)
+#define OTG_GINTSTS_ENUMDNE (1u << 13)
+
+#define ETH_STATUS MMIO32(ETH_BASE + 0x00UL)
+#define ETH_RECV_SIZE MMIO32(ETH_BASE + 0x04UL)
+#define ETH_RECV_DST MMIO32(ETH_BASE + 0x08UL)
+#define ETH_SEND_SRC MMIO32(ETH_BASE + 0x0CUL)
+#define ETH_SEND_SIZE MMIO32(ETH_BASE + 0x10UL)
+#define ETH_MAC_HIGH MMIO32(ETH_BASE + 0x14UL)
+#define ETH_MAC_LOW MMIO32(ETH_BASE + 0x18UL)
+#define ETH_MACCR MMIO32(ETH_BASE + 0x100UL)
+#define ETH_MACFFR MMIO32(ETH_BASE + 0x104UL)
+#define ETH_MACMIIAR MMIO32(ETH_BASE + 0x110UL)
+#define ETH_MACMIIDR MMIO32(ETH_BASE + 0x114UL)
+#define ETH_MACFCR MMIO32(ETH_BASE + 0x118UL)
+#define ETH_MACVLANTR MMIO32(ETH_BASE + 0x11CUL)
+#define ETH_DMASR MMIO32(ETH_BASE + 0x200UL)
+#define ETH_DMAIER MMIO32(ETH_BASE + 0x204UL)
+#define ETH_DMAOMR MMIO32(ETH_BASE + 0x208UL)
+#define ETH_DMABMR MMIO32(ETH_BASE + 0x20CUL)
+#define ETH_STATUS_RECV (1u << 0)
+#define ETH_STATUS_SEND (1u << 1)
+#define ETH_DMASR_TI (1u << 0)
+#define ETH_DMASR_RI (1u << 6)
+#define ETH_DMASR_NIS (1u << 16)
+#define ETH_DMAIER_TIE (1u << 0)
+#define ETH_DMAIER_RIE (1u << 6)
+#define ETH_DMAIER_NISE (1u << 16)
+#define ETH_DMABMR_SR (1u << 0)
+
 #define I2C0_CR1 MMIO32(I2C0_BASE + 0x00UL)
 #define I2C0_CR2 MMIO32(I2C0_BASE + 0x04UL)
 #define I2C0_OAR1 MMIO32(I2C0_BASE + 0x08UL)
@@ -433,6 +497,8 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define IRQ_CAN1_RX1 27u
 #define IRQ_CAN1_SCE 28u
 #define IRQ_SDIO 29u
+#define IRQ_USB 30u
+#define IRQ_ETH 31u
 #define IRQ_RTC 16u
 #define IRQ_TIM1_UP 17u
 #define IRQ_TIM2_UP 18u
@@ -604,6 +670,8 @@ volatile I2cIrqEvent g_log[LOG_SIZE];
 volatile unsigned int g_log_count = 0u;
 static volatile uint32_t g_dma_src_words[2];
 static volatile uint32_t g_dma_dst_words[2];
+static volatile uint32_t g_eth_src_words[4];
+static volatile uint32_t g_eth_dst_words[4];
 static int g_pass = 0;
 static int g_fail = 0;
 
@@ -820,6 +888,9 @@ static void i2c_init(void);
 static void gpio_exti_init(void);
 static void usart_init(void);
 static void spi_init(void);
+static void test_usb_fs(void);
+static void test_otg_fs(void);
+static void test_eth(void);
 static void i2c_stop(void);
 static void i2c_start(void);
 static void i2c_write_addr(unsigned int addr, unsigned int read);
@@ -869,6 +940,8 @@ static void setup_plic(void)
 	PLIC_PRIO(IRQ_CAN1_RX1) = 1u;
 	PLIC_PRIO(IRQ_CAN1_SCE) = 1u;
 	PLIC_PRIO(IRQ_SDIO) = 1u;
+	PLIC_PRIO(IRQ_USB) = 1u;
+	PLIC_PRIO(IRQ_ETH) = 1u;
 	PLIC_PRIO(IRQ_RTC) = 1u;
 	PLIC_PRIO(IRQ_TIM1_UP) = 1u;
 	PLIC_PRIO(IRQ_TIM2_UP) = 1u;
@@ -879,7 +952,8 @@ static void setup_plic(void)
 	                                  (1u << IRQ_USART2) | (1u << IRQ_RTC) | (1u << IRQ_TIM1_UP) |
 	                                  (1u << IRQ_TIM2_UP) | (1u << IRQ_WWDG) | (1u << IRQ_FLASH) |
 	                                  (1u << IRQ_ADC1_2) | (1u << IRQ_CAN1_TX) | (1u << IRQ_CAN1_RX0) |
-	                                  (1u << IRQ_CAN1_RX1) | (1u << IRQ_CAN1_SCE) | (1u << IRQ_SDIO);
+	                                  (1u << IRQ_CAN1_RX1) | (1u << IRQ_CAN1_SCE) | (1u << IRQ_SDIO) |
+	                                  (1u << IRQ_USB) | (1u << IRQ_ETH);
 	PLIC_THRESHOLD_HART0 = 0u;
 }
 
@@ -1662,6 +1736,126 @@ static void test_fsmc(void)
 	pass_test("FSMC-005: AHB reset clears controller and disables bank");
 }
 
+static void test_usb_fs(void)
+{
+	put_str("\r\n--- USB Device FS Register Test ---\r\n");
+
+	if (!expect_eq("USB-001.CNTR", USB_CNTR, 0u)) return;
+	if (!expect_eq("USB-001.ISTR", USB_ISTR, 0u)) return;
+	if (!expect_eq("USB-001.DADDR", USB_DADDR, 0u)) return;
+	pass_test("USB-001: reset values");
+
+	RCC_APB1ENR |= RCC_APB1_USB;
+	USB_EP0R = 0xFFFFFFFFu;
+	USB_BTABLE = 0xFFFFFFFFu;
+	if (!expect_eq("USB-002.EP0R", USB_EP0R, 0xFFFFu)) return;
+	if (!expect_eq("USB-002.BTABLE", USB_BTABLE, 0x1FFFu)) return;
+	pass_test("USB-002: writable masks");
+
+	i2c_clear_log();
+	USB_CNTR = USB_CNTR_RESETM | USB_CNTR_CTRM;
+	if (!i2c_wait_n(1u)) {
+		fail_test("USB-003", "interrupt timeout");
+		return;
+	}
+	if (!expect_eq("USB-003.IRQ", g_log[0].irq_id, IRQ_USB)) return;
+	if (!expect_true("USB-003", (USB_ISTR & (USB_ISTR_RESET | USB_ISTR_CTR)) != 0u, "status bits missing")) return;
+	USB_ISTR = USB_ISTR_RESET | USB_ISTR_CTR;
+	if (!expect_eq("USB-003.CLEAR", USB_ISTR & (USB_ISTR_RESET | USB_ISTR_CTR), 0u)) return;
+	pass_test("USB-003: control-triggered interrupt and W0C status");
+
+	RCC_APB1RSTR = RCC_APB1_USB;
+	RCC_APB1RSTR = 0u;
+	if (!expect_eq("USB-004.RESET", USB_CNTR, 0u)) return;
+	pass_test("USB-004: APB reset");
+}
+
+static void test_otg_fs(void)
+{
+	put_str("\r\n--- OTG FS Register Test ---\r\n");
+
+	if (!expect_eq("OTG-001.GAHBCFG", OTG_GAHBCFG, 0u)) return;
+	if (!expect_eq("OTG-001.GINTSTS", OTG_GINTSTS, 0u)) return;
+	pass_test("OTG-001: reset values");
+
+	RCC_AHBENR |= RCC_AHB_OTGFS;
+	OTG_GAHBCFG = OTG_GAHBCFG_GINT;
+	OTG_GINTMSK = OTG_GINTSTS_USBRST | OTG_GINTSTS_ENUMDNE;
+	i2c_clear_log();
+	OTG_GRSTCTL = OTG_GRSTCTL_CSRST;
+	if (!i2c_wait_n(1u)) {
+		fail_test("OTG-002", "reset interrupt timeout");
+		return;
+	}
+	if (!expect_eq("OTG-002.IRQ", g_log[0].irq_id, IRQ_USB)) return;
+	if (!expect_true("OTG-002", (OTG_GINTSTS & OTG_GINTSTS_USBRST) != 0u, "USBRST missing")) return;
+	OTG_GINTSTS = OTG_GINTSTS_USBRST;
+	if (!expect_eq("OTG-002.CLEAR", OTG_GINTSTS & OTG_GINTSTS_USBRST, 0u)) return;
+	pass_test("OTG-002: core reset event");
+
+	i2c_clear_log();
+	OTG_GUSBCFG = OTG_GUSBCFG_FDMOD;
+	if (!i2c_wait_n(1u)) {
+		fail_test("OTG-003", "enum interrupt timeout");
+		return;
+	}
+	if (!expect_eq("OTG-003.IRQ", g_log[0].irq_id, IRQ_USB)) return;
+	if (!expect_true("OTG-003", (OTG_GINTSTS & OTG_GINTSTS_ENUMDNE) != 0u, "ENUMDNE missing")) return;
+	OTG_GINTSTS = OTG_GINTSTS_ENUMDNE;
+	if (!expect_eq("OTG-003.CLEAR", OTG_GINTSTS & OTG_GINTSTS_ENUMDNE, 0u)) return;
+	pass_test("OTG-003: force-device-mode event");
+}
+
+static void test_eth(void)
+{
+	put_str("\r\n--- Ethernet Mailbox and DMA Test ---\r\n");
+
+	if (!expect_eq("ETH-001.STATUS", ETH_STATUS, 0u)) return;
+	if (!expect_eq("ETH-001.MACCR", ETH_MACCR, 0u)) return;
+	pass_test("ETH-001: reset values");
+
+	RCC_AHBENR |= RCC_AHB_ETHMAC | RCC_AHB_ETHMACTX | RCC_AHB_ETHMACRX;
+	ETH_DMAIER = ETH_DMAIER_TIE | ETH_DMAIER_RIE | ETH_DMAIER_NISE;
+	ETH_MAC_HIGH = 0xAABBCCDDu;
+	ETH_MAC_LOW = 0x11223344u;
+	if (!expect_eq("ETH-002.MAC_HIGH", ETH_MAC_HIGH, 0xAABBCCDDu)) return;
+	if (!expect_eq("ETH-002.MAC_LOW", ETH_MAC_LOW, 0x11223344u)) return;
+	pass_test("ETH-002: writable address registers");
+
+	for (unsigned i = 0u; i < 4u; ++i) {
+		g_eth_src_words[i] = 0x11110000u + i;
+		g_eth_dst_words[i] = 0u;
+	}
+	ETH_SEND_SRC = (uint32_t)(uintptr_t)&g_eth_src_words[0];
+	ETH_RECV_DST = (uint32_t)(uintptr_t)&g_eth_dst_words[0];
+	ETH_SEND_SIZE = sizeof(g_eth_src_words);
+	i2c_clear_log();
+	ETH_STATUS = ETH_STATUS_SEND;
+	if (!i2c_wait_n(1u)) {
+		fail_test("ETH-003", "send interrupt timeout");
+		return;
+	}
+	if (!expect_eq("ETH-003.IRQ", g_log[0].irq_id, IRQ_ETH)) return;
+	if (!expect_true("ETH-003", (ETH_DMASR & ETH_DMASR_TI) != 0u, "TX flag missing")) return;
+	ETH_STATUS = ETH_STATUS_RECV;
+	if (!i2c_wait_n(2u)) {
+		fail_test("ETH-003", "receive interrupt timeout");
+		return;
+	}
+	if (!expect_eq("ETH-003.IRQ2", g_log[1].irq_id, IRQ_ETH)) return;
+	for (unsigned i = 0u; i < 4u; ++i) {
+		if (!expect_eq("ETH-003.LOOP", g_eth_dst_words[i], 0x11110000u + i)) return;
+	}
+	ETH_DMASR = ETH_DMASR_TI | ETH_DMASR_RI | ETH_DMASR_NIS;
+	if (!expect_eq("ETH-003.CLEAR", ETH_DMASR & (ETH_DMASR_TI | ETH_DMASR_RI | ETH_DMASR_NIS), 0u)) return;
+	pass_test("ETH-003: send/receive loopback and DMA status");
+
+	ETH_DMABMR = ETH_DMABMR_SR;
+	if (!expect_eq("ETH-004.RESET_MACCR", ETH_MACCR, 0u)) return;
+	if (!expect_eq("ETH-004.RESET_DMASR", ETH_DMASR, 0u)) return;
+	pass_test("ETH-004: software reset");
+}
+
 static void i2c_stop(void)
 {
 	I2C0_CR1 |= CR1_STOP;
@@ -2077,6 +2271,35 @@ void trap_handler(void)
 			g_log[idx].irq_id = irq_id;
 			g_log[idx].sr1 = esr;
 			g_log[idx].sr2 = msr;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_USB) {
+		unsigned int status = USB_ISTR;
+		unsigned int aux = USB_DADDR;
+		USB_ISTR = status;
+		unsigned int idx = g_log_count;
+		if (status == 0u) {
+			status = OTG_GINTSTS;
+			aux = OTG_GINTMSK;
+			OTG_GINTSTS = status;
+		}
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = status;
+			g_log[idx].sr2 = aux;
+			__asm__ volatile("fence" ::: "memory");
+			g_log_count = idx + 1u;
+		}
+	} else if (irq_id == IRQ_ETH) {
+		unsigned int dmasr = ETH_DMASR;
+		unsigned int status = ETH_STATUS;
+		ETH_DMASR = dmasr;
+		unsigned int idx = g_log_count;
+		if (idx < LOG_SIZE) {
+			g_log[idx].irq_id = irq_id;
+			g_log[idx].sr1 = dmasr;
+			g_log[idx].sr2 = status;
 			__asm__ volatile("fence" ::: "memory");
 			g_log_count = idx + 1u;
 		}
@@ -2751,6 +2974,9 @@ void isr_main(void)
 	if (g_test_mask & 0x80000u) test_can();
 	if (g_test_mask & 0x100000u) test_sdio();
 	if (g_test_mask & 0x200000u) test_fsmc();
+	if (g_test_mask & 0x400000u) test_usb_fs();
+	if (g_test_mask & 0x800000u) test_otg_fs();
+	if (g_test_mask & 0x1000000u) test_eth();
 	if (g_test_mask & 0x1000u) test_spi();
 	if (g_test_mask & 0x800u) test_usart();
 	i2c_init();

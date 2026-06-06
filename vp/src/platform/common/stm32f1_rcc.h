@@ -103,8 +103,8 @@ private:
 	    0x3u | (0xFu << 4) | (0x7u << 8) | (0x7u << 11) | (0x3u << 14) | (0x7Fu << 16) |
 	    (0x7u << 24);
 	static constexpr uint32_t APB2_MASK = 0x0038FFFDu;
-	static constexpr uint32_t APB1_MASK = 0x3AFEC9FFu | (1u << 11);
-	static constexpr uint32_t AHB_MASK = 0x00000557u;
+	static constexpr uint32_t APB1_MASK = 0x3AFEC9FFu | (1u << 11) | (1u << 23);
+	static constexpr uint32_t AHB_MASK = 0x0001D557u;
 	static constexpr uint32_t BDCR_RW_MASK = 0x00018305u;
 	static constexpr uint32_t CSR_FLAGS = 0xFC000000u;
 
