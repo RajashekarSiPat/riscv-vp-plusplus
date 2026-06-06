@@ -2047,6 +2047,17 @@ static void test_sdio(void)
 	if (!expect_eq("SDIO-004.CLEAROVR", SDIO_STA & SDIO_STA_RXOVERR, 0u)) return;
 	pass_test("SDIO-004B: FIFO overflow and clear");
 
+	SDIO_MASK = 0u;
+	SDIO_DCTRL = SDIO_DCTRL_DTEN;
+	i2c_clear_log();
+	from = g_log_count;
+	SDIO_FIFO = 0xCAFEBABEu;
+	if (!expect_eq("SDIO-004C.LOG", g_log_count, from)) return;
+	if (!expect_true("SDIO-004C", (SDIO_STA & SDIO_STA_DATAEND) != 0u, "DATAEND missing without IRQ")) return;
+	SDIO_ICR = SDIO_STA_DATAEND;
+	if (!expect_eq("SDIO-004C.CLEAR", SDIO_STA & SDIO_STA_DATAEND, 0u)) return;
+	pass_test("SDIO-004C: data-end updates status without interrupt");
+
 	SDIO_CLKCR = SDIO_CLKCR_CLKEN | 0x03u;
 	RCC_AHBENR &= ~RCC_AHB_SDIO;
 	if (!expect_eq("SDIO-005.GATED", SDIO_CLKCR, 0u)) return;
