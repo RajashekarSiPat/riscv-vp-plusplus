@@ -269,6 +269,9 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define CAN_TSR_TME0 (1u << 26)
 #define CAN_TSR_TME1 (1u << 27)
 #define CAN_TSR_TME2 (1u << 28)
+#define CAN_RF0R_FMP0_MASK 0x3u
+#define CAN_RF0R_FULL0 (1u << 3)
+#define CAN_RF0R_FOVR0 (1u << 4)
 #define CAN_IER_TMEIE (1u << 0)
 #define CAN_IER_FMPIE0 (1u << 1)
 #define CAN_IER_FFIE0 (1u << 2)
@@ -1627,17 +1630,43 @@ static void test_can(void)
 	if (!expect_eq("CAN-003.TSR", CAN1_TSR & (CAN_TSR_RQCP0 | CAN_TSR_TXOK0), 0u)) return;
 	pass_test("CAN-003: TX request loopback and interrupt claims");
 
+	CAN1_IER = CAN_IER_TMEIE;
+	i2c_clear_log();
+	CAN1_TDT0R = 0x00000004u;
+	CAN1_TDL0R = 0x01020304u;
+	CAN1_TDH0R = 0x05060708u;
+	CAN1_TI0R = 0x10000000u | CAN_TIR_TXRQ;
+	CAN1_TDT0R = 0x00000005u;
+	CAN1_TDL0R = 0x11121314u;
+	CAN1_TDH0R = 0x15161718u;
+	CAN1_TI0R = 0x20000000u | CAN_TIR_TXRQ;
+	CAN1_TDT0R = 0x00000006u;
+	CAN1_TDL0R = 0x21222324u;
+	CAN1_TDH0R = 0x25262728u;
+	CAN1_TI0R = 0x30000000u | CAN_TIR_TXRQ;
+	if (!expect_eq("CAN-004.FMP", CAN1_RF0R & CAN_RF0R_FMP0_MASK, 3u)) return;
+	if (!expect_true("CAN-004.FULL", (CAN1_RF0R & CAN_RF0R_FULL0) != 0u, "full flag missing")) return;
+	CAN1_TDT0R = 0x00000007u;
+	CAN1_TDL0R = 0x31323334u;
+	CAN1_TDH0R = 0x35363738u;
+	CAN1_TI0R = 0x40000000u | CAN_TIR_TXRQ;
+	if (!expect_true("CAN-004.OVR", (CAN1_RF0R & CAN_RF0R_FOVR0) != 0u, "overflow flag missing")) return;
+	CAN1_RF0R = 0x20u;
+	if (!expect_eq("CAN-004.RELEASE", CAN1_RF0R & CAN_RF0R_FMP0_MASK, 2u)) return;
+	if (!expect_eq("CAN-004.RI0R", CAN1_RI0R, 0x20000001u)) return;
+	pass_test("CAN-004: FIFO depth, overflow, and release");
+
 	RCC_APB1ENR &= ~RCC_APB1_CAN1;
-	if (!expect_eq("CAN-004.GATED", CAN1_IER, 0u)) return;
+	if (!expect_eq("CAN-005.GATED", CAN1_IER, 0u)) return;
 	CAN1_IER = CAN_IER_TMEIE;
 	RCC_APB1ENR |= RCC_APB1_CAN1;
-	if (!expect_eq("CAN-004.RETAIN", CAN1_IER, CAN_IER_TMEIE | CAN_IER_FMPIE0)) return;
+	if (!expect_eq("CAN-005.RETAIN", CAN1_IER, CAN_IER_TMEIE | CAN_IER_FMPIE0)) return;
 	RCC_APB1RSTR = RCC_APB1_CAN1;
 	RCC_APB1RSTR = 0u;
-	if (!expect_eq("CAN-004.RESET_MCR", CAN1_MCR, 0x00010002u)) return;
-	if (!expect_eq("CAN-004.RESET_TSR", CAN1_TSR, 0x1C000000u)) return;
-	if (!expect_eq("CAN-004.RESET_IER", CAN1_IER, 0u)) return;
-	pass_test("CAN-004: APB gate and reset");
+	if (!expect_eq("CAN-005.RESET_MCR", CAN1_MCR, 0x00010002u)) return;
+	if (!expect_eq("CAN-005.RESET_TSR", CAN1_TSR, 0x1C000000u)) return;
+	if (!expect_eq("CAN-005.RESET_IER", CAN1_IER, 0u)) return;
+	pass_test("CAN-005: APB gate and reset");
 }
 
 static void test_sdio(void)

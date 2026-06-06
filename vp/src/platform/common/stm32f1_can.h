@@ -42,7 +42,10 @@ public:
 			m = {};
 		}
 		m_rx0 = {};
-		m_rx0_pending = false;
+		m_rx_fifo.fill({});
+		m_rx_head = 0u;
+		m_rx_tail = 0u;
+		m_rx_count = 0u;
 	}
 
 private:
@@ -112,7 +115,10 @@ private:
 
 	TxMailbox m_tx[3]{};
 	RxMailbox m_rx0{};
-	bool m_rx0_pending = false;
+	std::array<RxMailbox, 3> m_rx_fifo{};
+	unsigned m_rx_head = 0u;
+	unsigned m_rx_tail = 0u;
+	unsigned m_rx_count = 0u;
 	uint32_t m_mcr = 0u;
 	uint32_t m_msr = 0u;
 	uint32_t m_tsr = 0u;
@@ -140,14 +146,28 @@ private:
 	}
 
 	void push_rx0_from_tx(const TxMailbox &tx) {
-		m_rx0.rir = tx.tir;
-		m_rx0.rdt = tx.tdt;
-		m_rx0.rdl = tx.tdl;
-		m_rx0.rdh = tx.tdh;
-		m_rx0_pending = true;
-		m_rf0r = (m_rf0r & ~RF0R_FMP0_MASK) | 1u;
-		if ((m_ier & IER_FMPIE0) != 0u) {
-			trigger(irq_rx0);
+		RxMailbox rx{};
+		rx.rir = tx.tir;
+		rx.rdt = tx.tdt;
+		rx.rdl = tx.tdl;
+		rx.rdh = tx.tdh;
+		if (m_rx_count < m_rx_fifo.size()) {
+			m_rx_fifo[m_rx_tail] = rx;
+			m_rx_tail = (m_rx_tail + 1u) % m_rx_fifo.size();
+			++m_rx_count;
+			m_rf0r = (m_rf0r & ~RF0R_FMP0_MASK) | (m_rx_count & RF0R_FMP0_MASK);
+			if (m_rx_count >= m_rx_fifo.size()) {
+				m_rf0r |= RF0R_FULL0;
+			}
+			m_rx0 = m_rx_fifo[m_rx_head];
+			if ((m_ier & IER_FMPIE0) != 0u) {
+				trigger(irq_rx0);
+			}
+		} else {
+			m_rf0r |= RF0R_FOVR0;
+			if ((m_ier & IER_FOVIE0) != 0u) {
+				trigger(irq_rx0);
+			}
 		}
 	}
 
@@ -196,9 +216,19 @@ private:
 			break;
 		case OFF_RF0R:
 			if (write) {
-				m_rf0r &= ~(value & RF0R_RW_MASK);
-				if ((value & 0x20u) != 0u) {
-					m_rx0_pending = false;
+				if ((value & 0x20u) != 0u && m_rx_count > 0u) {
+					m_rx_head = (m_rx_head + 1u) % m_rx_fifo.size();
+					--m_rx_count;
+					if (m_rx_count > 0u) {
+						m_rx0 = m_rx_fifo[m_rx_head];
+					} else {
+						m_rx0 = {};
+					}
+					m_rf0r &= ~(RF0R_FMP0_MASK | RF0R_FULL0);
+					m_rf0r |= (m_rx_count & RF0R_FMP0_MASK);
+				}
+				if ((value & RF0R_FOVR0) != 0u) {
+					m_rf0r &= ~RF0R_FOVR0;
 				}
 			}
 			result = m_rf0r;
@@ -230,7 +260,6 @@ private:
 		case OFF_RDH0R:
 			if (write) {
 				m_rx0.rdh = value;
-				m_rx0_pending = false;
 			}
 			result = m_rx0.rdh;
 			break;
