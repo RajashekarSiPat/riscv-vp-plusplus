@@ -59,9 +59,11 @@ private:
 	static constexpr uint32_t CR_STRT = 1u << 6;
 	static constexpr uint32_t CR_LOCK = 1u << 7;
 	static constexpr uint32_t CR_OPTWRE = 1u << 9;
+	static constexpr uint32_t CR_EOPIE = 1u << 12;
 	static constexpr uint32_t CR_OBL_LAUNCH = 1u << 13;
 	static constexpr uint32_t CR_RW_MASK =
-	    CR_PG | CR_PER | CR_MER | CR_OPTPG | CR_OPTER | CR_STRT | CR_LOCK | CR_OPTWRE | CR_OBL_LAUNCH;
+	    CR_PG | CR_PER | CR_MER | CR_OPTPG | CR_OPTER | CR_STRT | CR_LOCK | CR_OPTWRE | CR_EOPIE |
+	    CR_OBL_LAUNCH;
 	static constexpr uint32_t KEY1 = 0x45670123u;
 	static constexpr uint32_t KEY2 = 0xCDEF89ABu;
 	static constexpr uint32_t OPTKEY1 = 0x08192A3Bu;
@@ -96,7 +98,9 @@ private:
 
 	void complete_operation() {
 		m_sr |= SR_EOP;
-		trigger_irq();
+		if ((m_cr & CR_EOPIE) != 0u) {
+			trigger_irq();
+		}
 	}
 
 	void write_keyr(uint32_t value) {

@@ -188,6 +188,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define FLASH_CR_STRT (1u << 6)
 #define FLASH_CR_LOCK (1u << 7)
 #define FLASH_CR_OPTWRE (1u << 9)
+#define FLASH_CR_EOPIE (1u << 12)
 #define FLASH_CR_OBL_LAUNCH (1u << 13)
 
 #define ADC_SR MMIO32(ADC1_BASE + 0x00UL)
@@ -1739,6 +1740,17 @@ static void test_flash(void)
 	if (!expect_eq("FL-002.LOCKED", FLASH_CR, FLASH_CR_LOCK)) return;
 	FLASH_KEYR = 0x45670123u;
 	FLASH_KEYR = 0xCDEF89ABu;
+	FLASH_CR = FLASH_CR_PG | FLASH_CR_PER;
+	i2c_clear_log();
+	FLASH_CR = FLASH_CR_PG | FLASH_CR_PER | FLASH_CR_OBL_LAUNCH;
+	if (!expect_eq("FL-002B.CR", FLASH_CR, FLASH_CR_PG | FLASH_CR_PER | FLASH_CR_OBL_LAUNCH)) return;
+	if (!expect_eq("FL-002B.LOG", g_log_count, 0u)) return;
+	if (!expect_true("FL-002B", (FLASH_SR & FLASH_SR_EOP) != 0u, "flash EOP missing without IRQ")) return;
+	pass_test("FL-002B: flash completion updates status without interrupt");
+
+	FLASH_SR = FLASH_SR_EOP;
+	i2c_clear_log();
+	FLASH_CR = FLASH_CR_EOPIE | FLASH_CR_PG;
 	i2c_clear_log();
 	FLASH_CR = FLASH_CR_PG | FLASH_CR_PER | FLASH_CR_OBL_LAUNCH;
 	if (!expect_eq("FL-002.CR", FLASH_CR, FLASH_CR_PG | FLASH_CR_PER | FLASH_CR_OBL_LAUNCH)) return;
