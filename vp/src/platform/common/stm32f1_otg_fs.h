@@ -35,6 +35,8 @@ public:
 		m_gintmsk = 0u;
 		m_grxfsiz = 0u;
 		m_gnptxfsiz = 0u;
+		m_device_mode = false;
+		m_reset_count = 0u;
 	}
 
 private:
@@ -67,6 +69,8 @@ private:
 	uint32_t m_gintmsk = 0u;
 	uint32_t m_grxfsiz = 0u;
 	uint32_t m_gnptxfsiz = 0u;
+	bool m_device_mode = false;
+	uint32_t m_reset_count = 0u;
 	bool m_clock_enabled = true;
 
 	static uint32_t read_word(const tlm::tlm_generic_payload &trans) {
@@ -88,6 +92,18 @@ private:
 	void inject(uint32_t bits) {
 		m_gintsts |= bits & GINTSTS_RW_MASK;
 		trigger(bits);
+	}
+
+	void soft_reset() {
+		m_gotgctl = 0u;
+		m_gotgint = 0u;
+		m_gusbcfg &= ~GUSBCFG_FDMOD;
+		m_grstctl = 0x80000000u;
+		m_gintsts = 0u;
+		m_grxfsiz = 0u;
+		m_gnptxfsiz = 0u;
+		m_device_mode = false;
+		++m_reset_count;
 	}
 
 	void b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &) {
@@ -114,18 +130,23 @@ private:
 			result = m_gotgctl;
 			break;
 		case OFF_GOTGINT:
-			if (write) m_gotgint = value;
+			if (write) m_gotgint &= ~value;
 			result = m_gotgint;
 			break;
 		case OFF_GAHBCFG:
-			if (write) m_gahbcfg = value & GAHBCFG_RW_MASK;
+			if (write) {
+				m_gahbcfg = value & GAHBCFG_RW_MASK;
+			}
 			result = m_gahbcfg;
 			break;
 		case OFF_GUSBCFG:
 			if (write) {
 				m_gusbcfg = value & GUSBCFG_RW_MASK;
 				if ((value & GUSBCFG_FDMOD) != 0u) {
+					m_device_mode = true;
 					inject(GINTSTS_ENUMDNE);
+				} else {
+					m_device_mode = false;
 				}
 			}
 			result = m_gusbcfg;
@@ -134,6 +155,8 @@ private:
 			if (write) {
 				m_grstctl = value & ~GRSTCTL_CSRST;
 				if ((value & GRSTCTL_CSRST) != 0u) {
+					++m_reset_count;
+					m_device_mode = false;
 					inject(GINTSTS_USBRST);
 				}
 			}

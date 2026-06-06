@@ -322,10 +322,12 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define SDIO_STA_CMDREND (1u << 6)
 #define SDIO_STA_CMDSENT (1u << 7)
 #define SDIO_STA_DATAEND (1u << 8)
+#define SDIO_STA_RXOVERR (1u << 5)
 #define SDIO_STA_TXACT (1u << 12)
 #define SDIO_STA_RXACT (1u << 13)
 #define SDIO_STA_TXFIFOHE (1u << 14)
 #define SDIO_STA_RXFIFOHF (1u << 15)
+#define SDIO_MASK_RXOVERRIE (1u << 5)
 #define SDIO_MASK_CMDRENDIE (1u << 6)
 #define SDIO_MASK_CMDSENTIE (1u << 7)
 #define SDIO_MASK_DATAENDIE (1u << 8)
@@ -1702,6 +1704,12 @@ static void test_sdio(void)
 	if (!expect_true("SDIO-003", (SDIO_STA & SDIO_STA_CMDREND) != 0u, "CMDREND missing")) return;
 	pass_test("SDIO-003: command completion and response registers");
 
+	SDIO_MASK = SDIO_MASK_CMDSENTIE;
+	SDIO_CMD = SDIO_CMD_CPSMEN | 0x03u;
+	if (!expect_true("SDIO-003B", (SDIO_STA & SDIO_STA_CMDSENT) != 0u, "CMDSENT missing")) return;
+	if (!expect_eq("SDIO-003B.RESPCMD", SDIO_RESPCMD, 0x03u)) return;
+	pass_test("SDIO-003B: command sent completion without response");
+
 	i2c_clear_log();
 	SDIO_DCTRL = SDIO_DCTRL_DTEN;
 	SDIO_FIFO = 0xA5A50001u;
@@ -1712,6 +1720,16 @@ static void test_sdio(void)
 	if (!expect_eq("SDIO-004.READ0", SDIO_FIFO, 0xA5A50001u)) return;
 	if (!expect_eq("SDIO-004.READ1", SDIO_FIFO, 0x5A5A0002u)) return;
 	pass_test("SDIO-004: FIFO loopback and transfer accounting");
+
+	SDIO_MASK = SDIO_MASK_RXOVERRIE;
+	for (unsigned i = 0u; i < 20u; ++i) {
+		SDIO_FIFO = 0x90000000u + i;
+	}
+	if (!expect_true("SDIO-004.OVERR", (SDIO_STA & SDIO_STA_RXOVERR) != 0u, "RXOVERR missing")) return;
+	if (!expect_eq("SDIO-004.OVERRCNT", SDIO_FIFOCNT, 16u)) return;
+	SDIO_ICR = SDIO_STA_RXOVERR;
+	if (!expect_eq("SDIO-004.CLEAROVR", SDIO_STA & SDIO_STA_RXOVERR, 0u)) return;
+	pass_test("SDIO-004B: FIFO overflow and clear");
 
 	SDIO_CLKCR = SDIO_CLKCR_CLKEN | 0x03u;
 	RCC_AHBENR &= ~RCC_AHB_SDIO;
@@ -1815,11 +1833,18 @@ static void test_otg_fs(void)
 
 	if (!expect_eq("OTG-001.GAHBCFG", OTG_GAHBCFG, 0u)) return;
 	if (!expect_eq("OTG-001.GINTSTS", OTG_GINTSTS, 0u)) return;
+	if (!expect_eq("OTG-001.GOTGINT", OTG_GOTGINT, 0u)) return;
 	pass_test("OTG-001: reset values");
 
 	RCC_AHBENR |= RCC_AHB_OTGFS;
 	OTG_GAHBCFG = OTG_GAHBCFG_GINT;
 	OTG_GINTMSK = OTG_GINTSTS_USBRST | OTG_GINTSTS_ENUMDNE;
+	OTG_GOTGINT = 0x0000FFFFu;
+	if (!expect_eq("OTG-001.W1C", OTG_GOTGINT, 0u)) return;
+	OTG_GRXFSIZ = 0x00000120u;
+	OTG_GNPTXFSIZ = 0x00200040u;
+	if (!expect_eq("OTG-001.RXFSIZ", OTG_GRXFSIZ, 0x120u)) return;
+	if (!expect_eq("OTG-001.NPTXFSIZ", OTG_GNPTXFSIZ, 0x00200040u)) return;
 	i2c_clear_log();
 	OTG_GRSTCTL = OTG_GRSTCTL_CSRST;
 	if (!i2c_wait_n(1u)) {
@@ -1842,7 +1867,9 @@ static void test_otg_fs(void)
 	if (!expect_true("OTG-003", (OTG_GINTSTS & OTG_GINTSTS_ENUMDNE) != 0u, "ENUMDNE missing")) return;
 	OTG_GINTSTS = OTG_GINTSTS_ENUMDNE;
 	if (!expect_eq("OTG-003.CLEAR", OTG_GINTSTS & OTG_GINTSTS_ENUMDNE, 0u)) return;
-	pass_test("OTG-003: force-device-mode event");
+	OTG_GUSBCFG = 0u;
+	if (!expect_eq("OTG-003.MODECLR", OTG_GUSBCFG, 0u)) return;
+	pass_test("OTG-003: force-device-mode event and clear");
 }
 
 static void test_eth(void)
