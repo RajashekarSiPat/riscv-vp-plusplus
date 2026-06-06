@@ -79,10 +79,18 @@ private:
 	                                         CR1_CMS_MASK | CR1_ARPE | CR1_CKD_MASK;
 
 	static constexpr uint32_t DIER_UIE = 1u << 0;
-	static constexpr uint32_t DIER_RW_MASK = DIER_UIE;
+	static constexpr uint32_t DIER_CC1IE = 1u << 1;
+	static constexpr uint32_t DIER_CC2IE = 1u << 2;
+	static constexpr uint32_t DIER_CC3IE = 1u << 3;
+	static constexpr uint32_t DIER_CC4IE = 1u << 4;
+	static constexpr uint32_t DIER_RW_MASK = DIER_UIE | DIER_CC1IE | DIER_CC2IE | DIER_CC3IE | DIER_CC4IE;
 
 	static constexpr uint32_t SR_UIF = 1u << 0;
-	static constexpr uint32_t SR_RW_MASK = SR_UIF;
+	static constexpr uint32_t SR_CC1IF = 1u << 1;
+	static constexpr uint32_t SR_CC2IF = 1u << 2;
+	static constexpr uint32_t SR_CC3IF = 1u << 3;
+	static constexpr uint32_t SR_CC4IF = 1u << 4;
+	static constexpr uint32_t SR_RW_MASK = SR_UIF | SR_CC1IF | SR_CC2IF | SR_CC3IF | SR_CC4IF;
 
 	static constexpr uint32_t EGR_UG = 1u << 0;
 	static constexpr uint32_t EGR_RW_MASK = EGR_UG;
@@ -140,6 +148,14 @@ private:
 		}
 	}
 
+	void generate_compare_event(unsigned channel) {
+		const uint32_t flag = 1u << channel;
+		m_sr |= flag;
+		if ((m_dier & flag) != 0u) {
+			trigger_irq();
+		}
+	}
+
 	void step_tick() {
 		if (!m_clock_enabled || (m_cr1 & CR1_CEN) == 0u) {
 			return;
@@ -149,6 +165,18 @@ private:
 		}
 		m_psc_counter = 0u;
 		++m_cnt;
+		if (m_cnt == m_ccr1) {
+			generate_compare_event(1u);
+		}
+		if (m_cnt == m_ccr2) {
+			generate_compare_event(2u);
+		}
+		if (m_cnt == m_ccr3) {
+			generate_compare_event(3u);
+		}
+		if (m_cnt == m_ccr4) {
+			generate_compare_event(4u);
+		}
 		if (m_cnt > m_arr) {
 			m_cnt = 0u;
 			generate_update_event();

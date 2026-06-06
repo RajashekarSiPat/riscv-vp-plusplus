@@ -146,6 +146,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define TIM1_CNT MMIO32(TIM1_BASE + 0x24UL)
 #define TIM1_PSC MMIO32(TIM1_BASE + 0x28UL)
 #define TIM1_ARR MMIO32(TIM1_BASE + 0x2CUL)
+#define TIM1_CCR1 MMIO32(TIM1_BASE + 0x34UL)
 
 #define TIM2_CR1 MMIO32(TIM2_BASE + 0x00UL)
 #define TIM2_DIER MMIO32(TIM2_BASE + 0x0CUL)
@@ -154,10 +155,13 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define TIM2_CNT MMIO32(TIM2_BASE + 0x24UL)
 #define TIM2_PSC MMIO32(TIM2_BASE + 0x28UL)
 #define TIM2_ARR MMIO32(TIM2_BASE + 0x2CUL)
+#define TIM2_CCR1 MMIO32(TIM2_BASE + 0x34UL)
 
 #define TIM_CR1_CEN (1u << 0)
 #define TIM_DIER_UIE (1u << 0)
+#define TIM_DIER_CC1IE (1u << 1)
 #define TIM_SR_UIF (1u << 0)
+#define TIM_SR_CC1IF (1u << 1)
 #define TIM_EGR_UG (1u << 0)
 
 #define FLASH_ACR MMIO32(FLASH_BASE + 0x00UL)
@@ -1400,6 +1404,7 @@ static void test_backup_domain(void)
 static void test_timers(void)
 {
 	put_str("\r\n--- TIM1/TIM2 Update Event Test ---\r\n");
+	unsigned int from;
 
 	RCC_APB2ENR |= RCC_APB2_TIM1;
 	RCC_APB1ENR |= RCC_APB1_TIM2 | RCC_APB1_TIM3 | RCC_APB1_TIM4 | RCC_APB1_TIM5;
@@ -1436,6 +1441,27 @@ static void test_timers(void)
 	                 "update flags missing"))
 		return;
 	pass_test("TIM-001: TIM1 and TIM2 update-event progression");
+
+	TIM1_DIER = TIM_DIER_CC1IE;
+	TIM1_SR = 0u;
+	TIM1_CNT = 0u;
+	TIM1_ARR = 10u;
+	TIM1_CCR1 = 2u;
+	i2c_clear_log();
+	from = g_log_count;
+	(void)TIM1_CNT;
+	(void)TIM1_CNT;
+	if (!i2c_wait_n(from + 1u)) {
+		fail_test("TIM-001B", "compare interrupt timeout");
+		return;
+	}
+	int cmp_idx = i2c_find(from, IRQ_TIM1_UP, TIM_SR_CC1IF);
+	if (!expect_true("TIM-001B", cmp_idx >= 0, "compare interrupt missing")) return;
+	if (!expect_eq("TIM-001B.CNT", g_log[cmp_idx].sr2, 2u)) return;
+	if (!expect_true("TIM-001B", (TIM1_SR & TIM_SR_CC1IF) != 0u, "compare flag missing")) return;
+	TIM1_SR = TIM_SR_CC1IF;
+	if (!expect_eq("TIM-001B.CLEAR", TIM1_SR & TIM_SR_CC1IF, 0u)) return;
+	pass_test("TIM-001B: TIM1 compare-match interrupt");
 
 	TIM1_CR1 = TIM_CR1_CEN;
 	RCC_APB2ENR &= ~RCC_APB2_TIM1;
