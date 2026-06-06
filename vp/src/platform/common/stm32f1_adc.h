@@ -48,6 +48,7 @@ public:
 		m_jdr3 = 0u;
 		m_jdr4 = 0u;
 		m_dr = 0u;
+		m_seq_index = 0u;
 	}
 
 private:
@@ -122,6 +123,7 @@ private:
 	uint32_t m_jdr3 = 0u;
 	uint32_t m_jdr4 = 0u;
 	uint32_t m_dr = 0u;
+	uint32_t m_seq_index = 0u;
 	bool m_clock_enabled = true;
 
 	static uint32_t read_word(const tlm::tlm_generic_payload &trans) {
@@ -140,14 +142,61 @@ private:
 		}
 	}
 
+	uint32_t sequence_length() const {
+		return (m_sqr1 >> 20u) & 0xFu;
+	}
+
+	uint32_t sequence_channel() const {
+		switch (m_seq_index) {
+		case 0u:
+			return m_sqr3 & 0x1Fu;
+		case 1u:
+			return (m_sqr3 >> 5u) & 0x1Fu;
+		case 2u:
+			return (m_sqr3 >> 10u) & 0x1Fu;
+		case 3u:
+			return (m_sqr3 >> 15u) & 0x1Fu;
+		case 4u:
+			return (m_sqr3 >> 20u) & 0x1Fu;
+		case 5u:
+			return (m_sqr3 >> 25u) & 0x1Fu;
+		case 6u:
+			return m_sqr2 & 0x1Fu;
+		case 7u:
+			return (m_sqr2 >> 5u) & 0x1Fu;
+		case 8u:
+			return (m_sqr2 >> 10u) & 0x1Fu;
+		case 9u:
+			return (m_sqr2 >> 15u) & 0x1Fu;
+		case 10u:
+			return (m_sqr2 >> 20u) & 0x1Fu;
+		case 11u:
+			return (m_sqr2 >> 25u) & 0x1Fu;
+		case 12u:
+			return m_sqr1 & 0x1Fu;
+		case 13u:
+			return (m_sqr1 >> 5u) & 0x1Fu;
+		case 14u:
+			return (m_sqr1 >> 10u) & 0x1Fu;
+		case 15u:
+			return (m_sqr1 >> 15u) & 0x1Fu;
+		default:
+			return 0u;
+		}
+	}
+
 	uint32_t conversion_value() const {
-		const uint32_t channel = m_sqr3 & 0x1Fu;
+		const uint32_t channel = sequence_channel();
 		return (((instance_index + 1u) & 0x3u) << 8u) | (channel & 0xFFu);
 	}
 
 	void start_conversion() {
 		m_sr |= SR_STRT;
 		m_dr = conversion_value();
+		const uint32_t length = sequence_length();
+		if (length != 0u) {
+			m_seq_index = (m_seq_index + 1u) % (length + 1u);
+		}
 		m_sr |= SR_EOC;
 		if ((m_cr1 & CR1_EOCIE) != 0u) {
 			trigger_irq();
@@ -176,6 +225,9 @@ private:
 		case OFF_SR:
 			if (write) {
 				m_sr &= ~value;
+				if ((value & SR_EOC) != 0u) {
+					m_seq_index = 0u;
+				}
 			}
 			result = m_sr;
 			break;

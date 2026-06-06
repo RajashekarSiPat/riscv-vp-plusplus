@@ -203,6 +203,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define ADC2_DR MMIO32(ADC2_BASE + 0x4CUL)
 #define ADC_SR_EOC (1u << 1)
 #define ADC_SR_STRT (1u << 4)
+#define ADC_CR1_SCAN (1u << 8)
 #define ADC_CR1_EOCIE (1u << 5)
 #define ADC_CR2_ADON (1u << 0)
 #define ADC_CR2_SWSTART (1u << 22)
@@ -1580,6 +1581,33 @@ static void test_adc(void)
 	if (!expect_eq("ADC-004.CLEAR1", ADC_SR & ADC_SR_EOC, 0u)) return;
 	if (!expect_eq("ADC-004.CLEAR2", ADC2_SR & ADC_SR_EOC, 0u)) return;
 	pass_test("ADC-004: EOC clear");
+
+	ADC_CR1 = ADC_CR1_EOCIE | ADC_CR1_SCAN;
+	ADC_SQR1 = 1u << 20u;
+	ADC_SQR3 = (5u) | (7u << 5u);
+	ADC_CR2 = ADC_CR2_ADON;
+	i2c_clear_log();
+	ADC_CR2 = ADC_CR2_ADON | ADC_CR2_SWSTART;
+	if (!i2c_wait_n(1u)) {
+		fail_test("ADC-005", "scan conversion 1 timeout");
+		return;
+	}
+	if (!expect_eq("ADC-005.DR1", ADC_DR, 0x105u)) return;
+	ADC_SR = ADC_SR_EOC;
+	ADC_CR2 = ADC_CR2_ADON | ADC_CR2_SWSTART;
+	if (!i2c_wait_n(2u)) {
+		fail_test("ADC-005", "scan conversion 2 timeout");
+		return;
+	}
+	if (!expect_eq("ADC-005.DR2", ADC_DR, 0x107u)) return;
+	ADC_SR = ADC_SR_EOC;
+	ADC_CR2 = ADC_CR2_ADON | ADC_CR2_SWSTART;
+	if (!i2c_wait_n(3u)) {
+		fail_test("ADC-005", "scan conversion 3 timeout");
+		return;
+	}
+	if (!expect_eq("ADC-005.DR3", ADC_DR, 0x105u)) return;
+	pass_test("ADC-005: scan sequence advances and wraps");
 }
 
 static void test_dac(void)
