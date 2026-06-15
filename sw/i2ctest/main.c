@@ -102,6 +102,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 #define I2C1_SLAVE_ADDR 0x51u
 
 #define LOG_SIZE 256u
+#define I2C_SCL_PERIODS_PER_BYTE_FRAME 9u
 
 typedef struct {
 	unsigned int irq_id;
@@ -266,9 +267,13 @@ static int expect_irq_gap_at_least(const char *name, unsigned int first_idx, uns
 	put_str(name);
 	put_str(" - interrupt gap ");
 	put_dec(gap);
-	put_str(" ticks, expected at least ");
+	put_str(" SCL periods (first=");
+	put_dec(first_tick);
+	put_str(", second=");
+	put_dec(second_tick);
+	put_str("), expected at least ");
 	put_dec(min_gap);
-	put_str(" ticks\r\n");
+	put_str(" SCL periods\r\n");
 	++g_fail;
 	return 0;
 }
@@ -366,7 +371,10 @@ static int sb_expect_tx_sequence(const char *name, const I2cMonitor *m)
 	ok &= expect_true(name, btf >= 0, "missing BTF event");
 	if (ok) {
 		ok &= expect_true(name, sb < addr, "SB must precede ADDR");
+		ok &= expect_irq_gap_at_least(name, (unsigned int)sb, (unsigned int)addr, I2C_SCL_PERIODS_PER_BYTE_FRAME);
 		ok &= expect_true(name, addr < txe, "ADDR must precede TxE");
+		ok &= expect_true(name, addr < btf, "ADDR must precede BTF");
+		ok &= expect_irq_gap_at_least(name, (unsigned int)addr, (unsigned int)btf, I2C_SCL_PERIODS_PER_BYTE_FRAME);
 	}
 	return ok;
 }
@@ -382,7 +390,56 @@ static int sb_expect_rx_sequence(const char *name, const I2cMonitor *m)
 	ok &= expect_true(name, rxne >= 0, "missing RxNE event");
 	if (ok) {
 		ok &= expect_true(name, sb < addr, "SB must precede ADDR");
+		ok &= expect_irq_gap_at_least(name, (unsigned int)sb, (unsigned int)addr, I2C_SCL_PERIODS_PER_BYTE_FRAME);
 		ok &= expect_true(name, addr < rxne, "ADDR must precede RxNE");
+		ok &= expect_irq_gap_at_least(name, (unsigned int)addr, (unsigned int)rxne, I2C_SCL_PERIODS_PER_BYTE_FRAME);
+	}
+	return ok;
+}
+
+static int sb_expect_af_sequence(const char *name, const I2cMonitor *m, unsigned int first_irq, unsigned int first_mask)
+{
+	int ok = 1;
+	int first = i2c_find(m->from, first_irq, first_mask);
+	int af = i2c_find(m->from, IRQ_I2C0_ER, SR1_AF);
+	ok &= expect_true(name, first >= 0, "missing precondition event");
+	ok &= expect_true(name, af >= 0, "missing AF event");
+	if (ok) {
+		ok &= expect_true(name, first < af, "precondition must precede AF");
+		ok &= expect_irq_gap_at_least(name, (unsigned int)first, (unsigned int)af, I2C_SCL_PERIODS_PER_BYTE_FRAME);
+	}
+	return ok;
+}
+
+static int sb_expect_10bit_prefix_nack_sequence(const char *name, const I2cMonitor *m)
+{
+	int ok = 1;
+	int sb = i2c_find(m->from, IRQ_I2C0_EV, SR1_SB);
+	int add10 = i2c_find(m->from, IRQ_I2C0_EV, SR1_ADD10);
+	int af = i2c_find(m->from, IRQ_I2C0_ER, SR1_AF);
+	ok &= expect_true(name, sb >= 0, "missing SB event");
+	ok &= expect_true(name, add10 < 0, "ADD10 must not be set after prefix NACK");
+	ok &= expect_true(name, af >= 0, "missing AF event");
+	if (ok) {
+		ok &= expect_true(name, sb < af, "SB must precede AF");
+		ok &= expect_irq_gap_at_least(name, (unsigned int)sb, (unsigned int)af, I2C_SCL_PERIODS_PER_BYTE_FRAME);
+	}
+	return ok;
+}
+
+static int sb_expect_10bit_af_sequence(const char *name, const I2cMonitor *m)
+{
+	int ok = 1;
+	int sb = i2c_find(m->from, IRQ_I2C0_EV, SR1_SB);
+	int add10 = i2c_find(m->from, IRQ_I2C0_EV, SR1_ADD10);
+	int af = i2c_find(m->from, IRQ_I2C0_ER, SR1_AF);
+	ok &= expect_true(name, sb >= 0, "missing SB event");
+	ok &= expect_true(name, add10 >= 0, "missing ADD10 event");
+	ok &= expect_true(name, af >= 0, "missing AF event");
+	if (ok) {
+		ok &= expect_true(name, sb < add10, "SB must precede ADD10");
+		ok &= expect_true(name, add10 < af, "ADD10 must precede AF");
+		ok &= expect_irq_gap_at_least(name, (unsigned int)add10, (unsigned int)af, I2C_SCL_PERIODS_PER_BYTE_FRAME);
 	}
 	return ok;
 }
@@ -714,6 +771,7 @@ void trap_handler(void)
 			g_log[idx].irq_id = irq_id;
 			g_log[idx].sr1 = sr1;
 			g_log[idx].sr2 = sr2;
+			g_log[idx].tick = TIMER_CNT;
 			__asm__ volatile("fence" ::: "memory");
 			g_log_count = idx + 1u;
 		}
@@ -730,6 +788,7 @@ void trap_handler(void)
 			g_log[idx].irq_id = irq_id;
 			g_log[idx].sr1 = sr1;
 			g_log[idx].sr2 = sr2;
+			g_log[idx].tick = TIMER_CNT;
 			__asm__ volatile("fence" ::: "memory");
 			g_log_count = idx + 1u;
 		}
@@ -1021,19 +1080,13 @@ static void test_addressing(void)
 		return;
 	}
 	i2c_write_addr10_header(0x1A5u, 0u);
-	if (!i2c_wait_sr1(SR1_ADD10)) {
-		fail_test("ADDR-006", "ADD10 timeout");
-		return;
-	}
-	I2C0_DR = 0xA5u;
 	if (!i2c_wait_log(mon.from, IRQ_I2C0_ER, SR1_AF)) {
 		fail_test("ADDR-006", "AF timeout");
 		return;
 	}
 	if (!expect_true("ADDR-006", i2c_find(0u, IRQ_I2C0_ER, SR1_AF) >= 0, "AF missing for high-prefix mismatch")) return;
 	if (!expect_eq("ADDR-006.SLAVE_RX", I2C1_SR1 & SR1_RxNE, 0u)) return;
-	if (!expect_true("ADDR-006", i2c_find(mon.from, IRQ_I2C0_EV, SR1_SB) >= 0, "master SB event missing")) return;
-	if (!expect_true("ADDR-006", i2c_find(mon.from, IRQ_I2C0_EV, SR1_ADD10) >= 0, "master ADD10 event missing")) return;
+	if (!sb_expect_10bit_prefix_nack_sequence("ADDR-006", &mon)) return;
 	pass_test("ADDR-006: 10-bit high-prefix mismatch rejects address");
 
 	i2c_init();
@@ -1057,8 +1110,7 @@ static void test_addressing(void)
 	}
 	if (!expect_true("ADDR-007", i2c_find(0u, IRQ_I2C0_ER, SR1_AF) >= 0, "AF missing for low-byte mismatch")) return;
 	if (!expect_eq("ADDR-007.SLAVE_RX", I2C1_SR1 & SR1_RxNE, 0u)) return;
-	if (!expect_true("ADDR-007", i2c_find(mon.from, IRQ_I2C0_EV, SR1_SB) >= 0, "master SB event missing")) return;
-	if (!expect_true("ADDR-007", i2c_find(mon.from, IRQ_I2C0_EV, SR1_ADD10) >= 0, "master ADD10 event missing")) return;
+	if (!sb_expect_10bit_af_sequence("ADDR-007", &mon)) return;
 	pass_test("ADDR-007: 10-bit low-byte mismatch rejects address");
 }
 
@@ -1156,6 +1208,7 @@ static void test_error_handling(void)
 	}
 	if (!expect_true("ERR-001", i2c_find(mon.from, IRQ_I2C0_EV, SR1_SB) >= 0, "master SB event missing")) return;
 	if (!expect_true("ERR-001", i2c_find(0u, IRQ_I2C0_ER, SR1_AF) >= 0, "AF missing")) return;
+	if (!sb_expect_af_sequence("ERR-001", &mon, IRQ_I2C0_EV, SR1_SB)) return;
 	pass_test("ERR-001: address NACK reports AF");
 
 	i2c_init();
@@ -1179,6 +1232,7 @@ static void test_error_handling(void)
 	if (!expect_true("ERR-002", i2c_find(mon.from, IRQ_I2C0_EV, SR1_ADDR) >= 0, "master ADDR event missing")) return;
 	if (!expect_true("ERR-002", i2c_find(mon.from, IRQ_I2C1_EV, SR1_ADDR) >= 0, "slave ADDR event missing")) return;
 	if (!expect_true("ERR-002", i2c_find(0u, IRQ_I2C0_ER, SR1_AF) >= 0, "master AF missing")) return;
+	if (!sb_expect_af_sequence("ERR-002", &mon, IRQ_I2C0_EV, SR1_ADDR)) return;
 	if (!expect_eq("ERR-002.SLAVE_DR", I2C1_DR & 0xFFu, 0u)) return;
 	pass_test("ERR-002: data-phase NACK reports AF");
 }
@@ -1225,6 +1279,8 @@ static void test_error_edgecases(void)
 	if (!expect_true("ERRX-001", i2c_find(mon.from, IRQ_I2C1_EV, SR1_RxNE) >= 0, "slave RxNE event missing")) return;
 	if (!expect_true("ERRX-001", i2c_find(0u, IRQ_I2C1_ER, SR1_OVR) >= 0, "OVR IRQ missing")) return;
 	if (!expect_true("ERRX-001", i2c_find(0u, IRQ_I2C0_ER, SR1_AF) >= 0, "master AF missing")) return;
+	if (!expect_irq_gap_at_least("ERRX-001", (unsigned int)i2c_find(mon.from, IRQ_I2C0_EV, SR1_ADDR), (unsigned int)i2c_find(mon.from, IRQ_I2C0_ER, SR1_AF), I2C_SCL_PERIODS_PER_BYTE_FRAME)) return;
+	if (!expect_irq_gap_at_least("ERRX-001", (unsigned int)i2c_find(mon.from, IRQ_I2C1_EV, SR1_RxNE), (unsigned int)i2c_find(0u, IRQ_I2C1_ER, SR1_OVR), I2C_SCL_PERIODS_PER_BYTE_FRAME)) return;
 	pass_test("ERRX-001: slave overrun reports OVR and master AF");
 
 	i2c_init();

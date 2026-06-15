@@ -12,9 +12,10 @@
 enum class I2cBusOp : uint32_t {
 	START = 1u,
 	ADDR = 2u,
-	WRITE = 3u,
-	READ = 4u,
-	STOP = 5u,
+	ADDR10_PREFIX = 3u,
+	WRITE = 4u,
+	READ = 5u,
+	STOP = 6u,
 };
 
 enum class I2cSclState : uint32_t {
@@ -74,6 +75,8 @@ public:
 	}
 
 private:
+	static constexpr uint64_t SCL_PERIODS_PER_BYTE_FRAME = 9u;
+
 	static constexpr uint32_t CR1_PE = (1u << 0);
 	static constexpr uint32_t CR1_SMBUS = (1u << 1);
 	static constexpr uint32_t CR1_SMBTYPE = (1u << 3);
@@ -171,8 +174,7 @@ private:
 	bool m_current_addr10 = false;
 	sc_core::sc_time m_clk_period = sc_core::SC_ZERO_TIME;
 	sc_core::sc_time m_bus_time = sc_core::SC_ZERO_TIME;
-	sc_core::sc_time m_irq_delay = sc_core::SC_ZERO_TIME;
-	sc_core::sc_time m_irq_base_delay = sc_core::SC_ZERO_TIME;
+	uint64_t m_tick_cursor = 0u;
 	struct PendingIrq {
 		uint32_t id;
 		sc_core::sc_time when;
@@ -204,8 +206,7 @@ private:
 		m_current_addr10 = false;
 		m_clk_period = sc_core::SC_ZERO_TIME;
 		m_bus_time = sc_core::SC_ZERO_TIME;
-		m_irq_delay = sc_core::SC_ZERO_TIME;
-		m_irq_base_delay = sc_core::SC_ZERO_TIME;
+		m_tick_cursor = 0u;
 		m_pending_irqs.clear();
 		m_irq_event.cancel();
 		m_rx_arm_event.cancel();
@@ -244,6 +245,13 @@ private:
 		return sc_core::sc_time(9u * scl_period_ns, sc_core::SC_NS);
 	}
 
+	void advance_scl_periods(uint64_t periods) {
+		m_tick_cursor += periods;
+		if (sim_ticks != nullptr) {
+			*sim_ticks = m_tick_cursor;
+		}
+	}
+
 	bool send_bus_frame(I2cBusFrame &frame) {
 		if (bus_initiator_socket.size() == 0u) {
 			return false;
@@ -258,11 +266,12 @@ private:
 		trans.set_byte_enable_ptr(nullptr);
 		trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
 		bus_initiator_socket->b_transport(trans, delay);
+		m_bus_time += delay;
+		advance_scl_periods(SCL_PERIODS_PER_BYTE_FRAME);
 		return trans.is_response_ok();
 	}
 
 	void arm_irq_delay() {
-		m_irq_delay = byte_frame_time();
 	}
 
 	bool bus_start() {
@@ -277,6 +286,14 @@ private:
 		frame.op = static_cast<uint32_t>(I2cBusOp::ADDR);
 		frame.addr = addr;
 		frame.read = read ? 1u : 0u;
+		frame.scl = I2cSclTlm(byte_frame_time(), I2cSclState::toggling);
+		return send_bus_frame(frame) && frame.ack != 0u;
+	}
+
+	bool bus_address_10bit_prefix(uint16_t prefix) {
+		I2cBusFrame frame{};
+		frame.op = static_cast<uint32_t>(I2cBusOp::ADDR10_PREFIX);
+		frame.addr = prefix & 0x0300u;
 		frame.scl = I2cSclTlm(byte_frame_time(), I2cSclState::toggling);
 		return send_bus_frame(frame) && frame.ack != 0u;
 	}
@@ -376,7 +393,7 @@ private:
 		const PendingIrq pending = m_pending_irqs.front();
 		m_pending_irqs.pop_front();
 		if (sim_ticks != nullptr) {
-			*sim_ticks = static_cast<uint64_t>(pending.when.value());
+			*sim_ticks = m_tick_cursor;
 		}
 		trigger_irq(pending.id);
 		if (!m_pending_irqs.empty()) {
@@ -389,7 +406,7 @@ private:
 	}
 
 	void queue_irq(uint32_t irq_id) {
-		m_pending_irqs.push_back(PendingIrq{irq_id, m_irq_base_delay + m_irq_delay});
+		m_pending_irqs.push_back(PendingIrq{irq_id, m_bus_time});
 		if (m_pending_irqs.size() == 1u) {
 			sc_core::sc_time next_delay = m_pending_irqs.front().when - sc_core::sc_time_stamp();
 			if (next_delay < sc_core::SC_ZERO_TIME) {
@@ -402,6 +419,9 @@ private:
 	void set_ev_flags(uint32_t bits) {
 		m_sr1 |= bits;
 		if (ev_irq_enabled(bits)) {
+			if (sim_ticks != nullptr) {
+				*sim_ticks = m_tick_cursor;
+			}
 			queue_irq(ev_irq_id);
 		}
 	}
@@ -409,6 +429,9 @@ private:
 	void set_er_flags(uint32_t bits) {
 		m_sr1 |= bits;
 		if (er_irq_enabled(bits)) {
+			if (sim_ticks != nullptr) {
+				*sim_ticks = m_tick_cursor;
+			}
 			queue_irq(er_irq_id);
 		}
 	}
@@ -454,7 +477,6 @@ private:
 	}
 
 	void bus_b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &delay) {
-		m_irq_base_delay = m_bus_time;
 		trans.set_dmi_allowed(false);
 		trans.set_response_status(tlm::TLM_OK_RESPONSE);
 		if (trans.get_data_length() < sizeof(I2cBusFrame) || trans.get_data_ptr() == nullptr) {
@@ -463,6 +485,7 @@ private:
 		}
 
 		I2cBusFrame frame = *reinterpret_cast<I2cBusFrame *>(trans.get_data_ptr());
+		advance_scl_periods(SCL_PERIODS_PER_BYTE_FRAME);
 		switch (static_cast<I2cBusOp>(frame.op)) {
 		case I2cBusOp::START:
 			if (m_sr2 & SR2_MSL) {
@@ -491,6 +514,15 @@ private:
 				m_sr2 = SR2_BUSY | (frame.read ? SR2_TRA : 0u) | (dual_match ? SR2_DUALF : 0u) |
 				        (general_call ? SR2_GENCALL : 0u);
 				set_ev_flags(SR1_ADDR | (frame.read ? SR1_TxE : 0u));
+				frame.ack = 1u;
+			}
+			break;
+		}
+
+		case I2cBusOp::ADDR10_PREFIX: {
+			const uint16_t prefix = static_cast<uint16_t>(frame.addr & 0x0300u);
+			const bool selected = primary_is_10bit() && (primary_addr() & 0x0300u) == prefix;
+			if (selected) {
 				frame.ack = 1u;
 			}
 			break;
@@ -690,15 +722,26 @@ private:
 						m_sr1 = (m_sr1 & ~SR1_SB) | SR1_AF;
 						m_state = State::IDLE;
 						m_sr2 &= ~(SR2_MSL | SR2_BUSY | SR2_TRA);
+						m_current_addr10 = false;
+						m_addr10_prefix = 0u;
 						set_er_flags(SR1_AF);
 					}
 					return;
 				}
 				m_rx_mode = false;
-				m_addr10_prefix = prefix;
-				m_state = State::ADDR10_LOW;
-				m_sr1 = (m_sr1 & ~SR1_SB) | SR1_ADD10;
-				set_ev_flags(SR1_ADD10);
+				if (bus_address_10bit_prefix(prefix)) {
+					m_addr10_prefix = prefix;
+					m_state = State::ADDR10_LOW;
+					m_sr1 = (m_sr1 & ~SR1_SB) | SR1_ADD10;
+					set_ev_flags(SR1_ADD10);
+				} else {
+					m_sr1 = (m_sr1 & ~SR1_SB) | SR1_AF;
+					m_state = State::IDLE;
+					m_sr2 &= ~(SR2_MSL | SR2_BUSY | SR2_TRA);
+					m_current_addr10 = false;
+					m_addr10_prefix = 0u;
+					set_er_flags(SR1_AF);
+				}
 				return;
 			}
 			complete_address(static_cast<uint16_t>(byte >> 1u), (byte & 1u) != 0u, false);
