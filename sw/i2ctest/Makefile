@@ -1,4 +1,5 @@
-RISCV_PREFIX ?= riscv32-unknown-elf-
+# Prefer the bare-metal toolchain; the local riscv32 wrapper points at a Linux sysroot.
+RISCV_PREFIX ?= riscv64-unknown-elf-
 CC  = $(RISCV_PREFIX)gcc
 AS  = $(RISCV_PREFIX)gcc
 LD  = $(RISCV_PREFIX)gcc

@@ -17,6 +17,7 @@ volatile unsigned int g_test_mask __attribute__((section(".test_cfg"))) = TEST_M
 
 #define UC_TBUF MMIO32(0x09004004UL)
 #define EXITER MMIO32(0x09010000UL)
+#define TIMER_CNT MMIO32(0x09005000UL)
 
 #define I2C0_BASE 0x41005400UL
 #define I2C1_BASE 0x41005800UL
@@ -106,6 +107,7 @@ typedef struct {
 	unsigned int irq_id;
 	unsigned int sr1;
 	unsigned int sr2;
+	unsigned int tick;
 } I2cIrqEvent;
 
 volatile I2cIrqEvent g_log[LOG_SIZE];
@@ -141,6 +143,11 @@ static void put_dec(unsigned int v)
 	while (--i >= 0) {
 		put_char(buf[i]);
 	}
+}
+
+static void timer_reset(void)
+{
+	TIMER_CNT = 0u;
 }
 
 static void pass_test(const char *name)
@@ -207,6 +214,7 @@ static int i2c_wait_sr1(unsigned int mask)
 		if ((I2C0_SR1 & mask) == mask) {
 			return 1;
 		}
+		__asm__ volatile("wfi");
 		__asm__ volatile("" ::: "memory");
 	}
 	return 0;
@@ -219,10 +227,72 @@ static int i2c1_wait_sr1(unsigned int mask)
 		if ((I2C1_SR1 & mask) == mask) {
 			return 1;
 		}
+		__asm__ volatile("wfi");
 		__asm__ volatile("" ::: "memory");
 	}
 	return 0;
 }
+
+static int i2c_find(unsigned int from, unsigned int irq_id, unsigned int sr1_mask);
+
+typedef struct {
+	unsigned int from;
+} I2cMonitor;
+
+static int i2c_wait_log(unsigned int from, unsigned int irq_id, unsigned int sr1_mask)
+{
+	unsigned int timeout = 20000000u;
+	while (--timeout > 0u) {
+		if (i2c_find(from, irq_id, sr1_mask) >= 0) {
+			return 1;
+		}
+		__asm__ volatile("wfi");
+		__asm__ volatile("" ::: "memory");
+	}
+	return 0;
+}
+
+static int expect_irq_gap_at_least(const char *name, unsigned int first_idx, unsigned int second_idx, unsigned int min_gap)
+{
+	unsigned int first_tick = g_log[first_idx].tick;
+	unsigned int second_tick = g_log[second_idx].tick;
+	unsigned int gap = second_tick - first_tick;
+
+	if (gap >= min_gap) {
+		return 1;
+	}
+
+	put_str("[FAIL] ");
+	put_str(name);
+	put_str(" - interrupt gap ");
+	put_dec(gap);
+	put_str(" ticks, expected at least ");
+	put_dec(min_gap);
+	put_str(" ticks\r\n");
+	++g_fail;
+	return 0;
+}
+
+static int expect_log_time_non_decreasing(const char *name, const I2cMonitor *m)
+{
+	for (unsigned int i = m->from + 1u; i < g_log_count; ++i) {
+		if (g_log[i].tick < g_log[i - 1u].tick) {
+			put_str("[FAIL] ");
+			put_str(name);
+			put_str(" - interrupt time moved backwards at log index ");
+			put_dec(i);
+			put_str(" (prev=");
+			put_dec(g_log[i - 1u].tick);
+			put_str(", curr=");
+			put_dec(g_log[i].tick);
+			put_str(")\r\n");
+			++g_fail;
+			return 0;
+		}
+	}
+	return 1;
+}
+
 
 static int i2c_find(unsigned int from, unsigned int irq_id, unsigned int sr1_mask)
 {
@@ -251,17 +321,15 @@ static void i2c_clear_log(void)
 		g_log[i].irq_id = 0u;
 		g_log[i].sr1 = 0u;
 		g_log[i].sr2 = 0u;
+		g_log[i].tick = 0u;
 	}
 	__asm__ volatile("fence" ::: "memory");
 	g_log_count = 0u;
 }
 
-typedef struct {
-	unsigned int from;
-} I2cMonitor;
-
 static void monitor_begin(I2cMonitor *m)
 {
+	timer_reset();
 	m->from = g_log_count;
 }
 
@@ -288,19 +356,34 @@ static int monitor_er_count(const I2cMonitor *m, unsigned int mask)
 static int sb_expect_tx_sequence(const char *name, const I2cMonitor *m)
 {
 	int ok = 1;
-	ok &= expect_true(name, monitor_seen_ev(m, SR1_SB), "missing SB event");
-	ok &= expect_true(name, monitor_seen_ev(m, SR1_ADDR), "missing ADDR event");
-	ok &= expect_true(name, monitor_seen_ev(m, SR1_TxE), "missing TxE event");
-	ok &= expect_true(name, monitor_seen_ev(m, SR1_BTF), "missing BTF event");
+	int sb = i2c_find(m->from, IRQ_I2C0_EV, SR1_SB);
+	int addr = i2c_find(m->from, IRQ_I2C0_EV, SR1_ADDR);
+	int txe = i2c_find(m->from, IRQ_I2C0_EV, SR1_TxE);
+	int btf = i2c_find(m->from, IRQ_I2C0_EV, SR1_BTF);
+	ok &= expect_true(name, sb >= 0, "missing SB event");
+	ok &= expect_true(name, addr >= 0, "missing ADDR event");
+	ok &= expect_true(name, txe >= 0, "missing TxE event");
+	ok &= expect_true(name, btf >= 0, "missing BTF event");
+	if (ok) {
+		ok &= expect_true(name, sb < addr, "SB must precede ADDR");
+		ok &= expect_true(name, addr < txe, "ADDR must precede TxE");
+	}
 	return ok;
 }
 
 static int sb_expect_rx_sequence(const char *name, const I2cMonitor *m)
 {
 	int ok = 1;
-	ok &= expect_true(name, monitor_seen_ev(m, SR1_SB), "missing SB event");
-	ok &= expect_true(name, monitor_seen_ev(m, SR1_ADDR), "missing ADDR event");
-	ok &= expect_true(name, monitor_seen_ev(m, SR1_RxNE), "missing RxNE event");
+	int sb = i2c_find(m->from, IRQ_I2C0_EV, SR1_SB);
+	int addr = i2c_find(m->from, IRQ_I2C0_EV, SR1_ADDR);
+	int rxne = i2c_find(m->from, IRQ_I2C0_EV, SR1_RxNE);
+	ok &= expect_true(name, sb >= 0, "missing SB event");
+	ok &= expect_true(name, addr >= 0, "missing ADDR event");
+	ok &= expect_true(name, rxne >= 0, "missing RxNE event");
+	if (ok) {
+		ok &= expect_true(name, sb < addr, "SB must precede ADDR");
+		ok &= expect_true(name, addr < rxne, "ADDR must precede RxNE");
+	}
 	return ok;
 }
 
@@ -461,9 +544,9 @@ static int i2c0_addr7_write(unsigned int addr, unsigned int data)
 {
 	unsigned int base = g_log_count;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr(addr, 0u);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADDR)) return 0;
 	i2c_write_byte(data);
 	if (!i2c_wait_sr1(SR1_TxE | SR1_BTF)) return 0;
 	if (!i2c1_wait_sr1(SR1_RxNE)) return 0;
@@ -477,9 +560,9 @@ static int i2c0_addr7_read(unsigned int addr, unsigned int source, unsigned int 
 	I2C1_DR = source;
 	I2C0_CR1 |= CR1_ACK;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr(addr, 1u);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADDR)) return 0;
 	if (!i2c_rx_byte(data)) return 0;
 	i2c_stop();
 	return 1;
@@ -490,18 +573,18 @@ static int i2c0_write_then_repeated_read(unsigned int addr, unsigned int write_d
 	unsigned int base = g_log_count;
 	I2C1_DR = source;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr(addr, 0u);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADDR)) return 0;
 	i2c_write_byte(write_data);
 	if (!i2c_wait_sr1(SR1_TxE | SR1_BTF)) return 0;
 	if (!i2c1_wait_sr1(SR1_RxNE)) return 0;
 
 	base = g_log_count;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr(addr, 1u);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADDR)) return 0;
 	if (!i2c_rx_byte(data)) return 0;
 	i2c_stop();
 	return 1;
@@ -513,16 +596,16 @@ static int i2c0_read_then_repeated_write(unsigned int addr, unsigned int source,
 	I2C1_DR = source;
 	I2C0_CR1 |= CR1_ACK;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr(addr, 1u);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADDR)) return 0;
 	if (!i2c_rx_byte(data)) return 0;
 
 	base = g_log_count;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr(addr, 0u);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADDR)) return 0;
 	i2c_write_byte(write_data);
 	if (!i2c_wait_sr1(SR1_TxE | SR1_BTF)) return 0;
 	if (!i2c1_wait_sr1(SR1_RxNE)) return 0;
@@ -536,9 +619,9 @@ static int i2c0_read_two_bytes(unsigned int addr, unsigned int first_source, uns
 	I2C1_DR = first_source;
 	I2C0_CR1 |= CR1_ACK;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr(addr, 1u);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADDR)) return 0;
 	if (!i2c_rx_byte(first)) return 0;
 	I2C1_DR = second_source;
 	if (!i2c_rx_byte(second)) return 0;
@@ -550,11 +633,11 @@ static int i2c0_addr10_write(unsigned int addr10, unsigned int data)
 {
 	unsigned int base = g_log_count;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr10_header(addr10, 0u);
-	if (!i2c_wait_sr1(SR1_ADD10)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADD10)) return 0;
 	i2c_write_byte(addr10 & 0xFFu);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C1_EV, SR1_ADDR)) return 0;
 	i2c_write_byte(data);
 	if (!i2c_wait_sr1(SR1_TxE | SR1_BTF)) return 0;
 	if (!i2c1_wait_sr1(SR1_RxNE)) return 0;
@@ -568,17 +651,17 @@ static int i2c0_addr10_read(unsigned int addr10, unsigned int source, unsigned i
 	I2C1_DR = source;
 	I2C0_CR1 |= CR1_ACK;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr10_header(addr10, 0u);
-	if (!i2c_wait_sr1(SR1_ADD10)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADD10)) return 0;
 	i2c_write_byte(addr10 & 0xFFu);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C1_EV, SR1_ADDR)) return 0;
 
 	base = g_log_count;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr10_header(addr10, 1u);
-	if (!i2c_wait_n(base + 2u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_ADDR)) return 0;
 	if (!i2c_rx_byte(data)) return 0;
 	i2c_stop();
 	return 1;
@@ -588,7 +671,7 @@ static int start_addr_write(unsigned int addr)
 {
 	unsigned int base = g_log_count;
 	i2c_start();
-	if (!i2c_wait_n(base + 1u)) return 0;
+	if (!i2c_wait_log(base, IRQ_I2C0_EV, SR1_SB)) return 0;
 	i2c_write_addr(addr, 0u);
 	return 1;
 }
@@ -700,6 +783,10 @@ static void test_register_model(void)
 		fail_test("REG-004", "SB missing before PE clear");
 		return;
 	}
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
+		fail_test("REG-004", "SB IRQ log timeout");
+		return;
+	}
 	if (!expect_true("REG-004", i2c_find(mon.from, IRQ_I2C0_EV, SR1_SB) >= 0, "SB IRQ missing before PE clear")) return;
 	I2C0_CR1 = 0u;
 	if (!expect_eq("REG-004.CR1", I2C0_CR1, 0u)) return;
@@ -716,12 +803,12 @@ static void test_irq_semantics(void)
 	monitor_begin(&mon);
 	I2C0_CR2 = 36u | CR2_ITEVTEN | CR2_ITERREN;
 	i2c_start();
-	if (!i2c_wait_n(mon.from + 1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("IRQ-001", "SB timeout");
 		return;
 	}
 	i2c_write_addr(I2C0_SLAVE_ADDR, 0u);
-	if (!i2c_wait_n(mon.from + 2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_ADDR)) {
 		fail_test("IRQ-001", "ADDR timeout");
 		return;
 	}
@@ -753,6 +840,10 @@ static void test_irq_semantics(void)
 	i2c_start();
 	if (!i2c_wait_sr1(SR1_SB)) {
 		fail_test("IRQ-003", "SB timeout");
+		return;
+	}
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
+		fail_test("IRQ-003", "SB IRQ log timeout");
 		return;
 	}
 	i2c_write_addr(0x7Eu, 0u);
@@ -885,7 +976,8 @@ static void test_addressing(void)
 		return;
 	}
 	if (!expect_eq("ADDR-004.DATA", rx, 0x9Eu)) return;
-	if (!expect_true("ADDR-004", i2c_count(0u, IRQ_I2C0_EV, SR1_ADDR) >= 2, "repeated 10-bit ADDR events missing")) return;
+	if (!expect_true("ADDR-004", i2c_find(mon.from, IRQ_I2C0_EV, SR1_ADDR) >= 0, "master ADDR event missing")) return;
+		if (!expect_true("ADDR-004", i2c_find(mon.from, IRQ_I2C1_EV, SR1_ADDR) >= 0, "slave ADDR event missing")) return;
 	if (!expect_true("ADDR-004", i2c_find(mon.from, IRQ_I2C0_EV, SR1_SB) >= 0, "master SB event missing")) return;
 	if (!expect_true("ADDR-004", i2c_count(mon.from, IRQ_I2C1_EV, SR1_TxE) > 0, "slave TxE event missing")) return;
 	if (!expect_true("ADDR-004", i2c_count(mon.from, IRQ_I2C1_EV, SR1_BTF) > 0, "slave BTF event missing")) return;
@@ -896,12 +988,12 @@ static void test_addressing(void)
 	monitor_begin(&mon);
 	i2c1_config_7bit(I2C1_SLAVE_ADDR, CR1_ACK | CR1_ENGC);
 	i2c_start();
-	if (!i2c_wait_n(1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("ADDR-005", "SB timeout");
 		return;
 	}
 	i2c_write_addr(0u, 0u);
-	if (!i2c_wait_n(2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_ADDR)) {
 		fail_test("ADDR-005", "ADDR timeout");
 		return;
 	}
@@ -924,7 +1016,7 @@ static void test_addressing(void)
 	monitor_begin(&mon);
 	i2c1_config_10bit(0x2A5u);
 	i2c_start();
-	if (!i2c_wait_n(1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("ADDR-006", "SB timeout");
 		return;
 	}
@@ -934,7 +1026,7 @@ static void test_addressing(void)
 		return;
 	}
 	I2C0_DR = 0xA5u;
-	if (!i2c_wait_n(2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_ER, SR1_AF)) {
 		fail_test("ADDR-006", "AF timeout");
 		return;
 	}
@@ -949,7 +1041,7 @@ static void test_addressing(void)
 	monitor_begin(&mon);
 	i2c1_config_10bit(0x2A5u);
 	i2c_start();
-	if (!i2c_wait_n(1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("ADDR-007", "SB timeout");
 		return;
 	}
@@ -959,7 +1051,7 @@ static void test_addressing(void)
 		return;
 	}
 	I2C0_DR = 0xA4u;
-	if (!i2c_wait_n(2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_ER, SR1_AF)) {
 		fail_test("ADDR-007", "AF timeout");
 		return;
 	}
@@ -1030,13 +1122,13 @@ static void test_protocol_edges(void)
 	i2c_clear_log();
 	monitor_begin(&mon);
 	i2c_start();
-	if (!i2c_wait_n(1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("PE-002", "SB timeout");
 		return;
 	}
 	i2c_write_addr(I2C0_SLAVE_ADDR, 0u);
-	if (!i2c_wait_n(2u)) {
-		fail_test("PE-002", "ADDR timeout");
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_ADDR)) {
+		fail_test("PE-002", "ADDR IRQ timeout");
 		return;
 	}
 	i2c_stop();
@@ -1058,7 +1150,7 @@ static void test_error_handling(void)
 		fail_test("ERR-001", "bad-address setup timeout");
 		return;
 	}
-	if (!i2c_wait_n(2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_ER, SR1_AF)) {
 		fail_test("ERR-001", "AF IRQ timeout");
 		return;
 	}
@@ -1074,12 +1166,12 @@ static void test_error_handling(void)
 		fail_test("ERR-002", "address phase timeout");
 		return;
 	}
-	if (!i2c_wait_n(2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_ADDR)) {
 		fail_test("ERR-002", "ADDR timeout");
 		return;
 	}
 	I2C0_DR = 0xD1u;
-	if (!i2c_wait_n(3u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_ER, SR1_AF)) {
 		fail_test("ERR-002", "data AF IRQ timeout");
 		return;
 	}
@@ -1100,12 +1192,12 @@ static void test_error_edgecases(void)
 	i2c1_config_7bit(I2C1_SLAVE_ADDR, CR1_ACK);
 	monitor_begin(&mon);
 	i2c_start();
-	if (!i2c_wait_n(mon.from + 1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("ERRX-001", "SB timeout");
 		return;
 	}
 	i2c_write_addr(I2C1_SLAVE_ADDR, 0u);
-	if (!i2c_wait_n(mon.from + 2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_ADDR)) {
 		fail_test("ERRX-001", "ADDR timeout");
 		return;
 	}
@@ -1119,8 +1211,12 @@ static void test_error_edgecases(void)
 		return;
 	}
 	I2C0_DR = 0x22u;
-	if (!i2c_wait_n(mon.from + 5u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C1_ER, SR1_OVR)) {
 		fail_test("ERRX-001", "overrun IRQ timeout");
+		return;
+	}
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_ER, SR1_AF)) {
+		fail_test("ERRX-001", "master AF timeout");
 		return;
 	}
 	if (!expect_true("ERRX-001", i2c_find(mon.from, IRQ_I2C0_EV, SR1_SB) >= 0, "master SB event missing")) return;
@@ -1134,12 +1230,12 @@ static void test_error_edgecases(void)
 	i2c_init();
 	monitor_begin(&mon);
 	i2c_start();
-	if (!i2c_wait_n(mon.from + 1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("ERRX-002", "SB timeout");
 		return;
 	}
 	I2C1_CR1 |= CR1_START;
-	if (!i2c_wait_n(mon.from + 2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_ER, SR1_ARLO)) {
 		fail_test("ERRX-002", "ARLO IRQ timeout");
 		return;
 	}
@@ -1154,12 +1250,12 @@ static void test_error_edgecases(void)
 	i2c1_config_7bit(I2C1_SLAVE_ADDR, CR1_ACK);
 	monitor_begin(&mon);
 	i2c_start();
-	if (!i2c_wait_n(1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("ERRX-003", "SB timeout");
 		return;
 	}
 	i2c_write_addr(I2C1_SLAVE_ADDR, 0u);
-	if (!i2c_wait_n(2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_ADDR)) {
 		fail_test("ERRX-003", "ADDR timeout");
 		return;
 	}
@@ -1179,12 +1275,12 @@ static void test_robustness(void)
 
 	monitor_begin(&mon);
 	i2c_start();
-	if (!i2c_wait_n(mon.from + 1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("ROB-001", "SB timeout");
 		return;
 	}
 	i2c_write_addr(I2C0_SLAVE_ADDR, 0u);
-	if (!i2c_wait_n(mon.from + 2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_ADDR)) {
 		fail_test("ROB-001", "ADDR timeout");
 		return;
 	}
@@ -1221,12 +1317,12 @@ static void test_robustness(void)
 	i2c_init();
 	monitor_begin(&mon);
 	i2c_start();
-	if (!i2c_wait_n(mon.from + 1u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_SB)) {
 		fail_test("ROB-003", "SB timeout");
 		return;
 	}
 	i2c_write_addr(I2C0_SLAVE_ADDR, 0u);
-	if (!i2c_wait_n(mon.from + 2u)) {
+	if (!i2c_wait_log(mon.from, IRQ_I2C0_EV, SR1_ADDR)) {
 		fail_test("ROB-003", "ADDR timeout");
 		return;
 	}

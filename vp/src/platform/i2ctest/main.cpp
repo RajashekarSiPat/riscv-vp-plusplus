@@ -2,7 +2,9 @@
 
 #include <cstdlib>
 #include <ctime>
+#include <cstring>
 #include <iostream>
+#include <string>
 
 #include "core/common/clint.h"
 #include "core/common/gdb-mc/gdb_runner.h"
@@ -74,6 +76,32 @@ struct Exiter : sc_core::sc_module {
 	}
 };
 
+struct TimerCounter : sc_core::sc_module {
+	tlm_utils::simple_target_socket<TimerCounter> tsock;
+	uint64_t counter = 0u;
+
+	SC_HAS_PROCESS(TimerCounter);
+
+	explicit TimerCounter(sc_core::sc_module_name name) : sc_module(name), tsock("tsock") {
+		tsock.register_b_transport(this, &TimerCounter::b_transport);
+	}
+
+	void b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &) {
+		uint32_t value = 0u;
+		if (trans.get_address() == 0u) {
+			if (trans.get_command() == tlm::TLM_READ_COMMAND) {
+				value = static_cast<uint32_t>(counter & 0xFFFFFFFFu);
+			} else {
+				counter = 0u;
+			}
+		}
+		if (trans.get_data_ptr() != nullptr && trans.get_data_length() >= sizeof(value)) {
+			std::memcpy(trans.get_data_ptr(), &value, sizeof(value));
+		}
+		trans.set_response_status(tlm::TLM_OK_RESPONSE);
+	}
+};
+
 int sc_main(int argc, char **argv) {
 	I2CTestOptions opt;
 	opt.parse(argc, argv);
@@ -97,6 +125,7 @@ int sc_main(int argc, char **argv) {
 	I2cStm32 i2c0("I2C0");
 	I2cStm32 i2c1("I2C1");
 	I2cBus i2c_bus("I2C_BUS");
+	TimerCounter timer("TIMER");
 	ConsoleUart console("Console");
 	Exiter exiter("Exiter");
 
@@ -106,8 +135,8 @@ int sc_main(int argc, char **argv) {
 	i2c_bus.initiator_socket_0.bind(i2c0.bus_target_socket);
 	i2c_bus.initiator_socket_1.bind(i2c1.bus_target_socket);
 
-	/* Bus: 1 initiator (ISS), 7 targets */
-	SimpleBus<1, 7> bus("Bus", nullptr, opt.break_on_transaction);
+	/* Bus: 1 initiator (ISS), 8 targets */
+	SimpleBus<1, 8> bus("Bus", nullptr, opt.break_on_transaction);
 
 	{
 		unsigned i = 0;
@@ -116,6 +145,7 @@ int sc_main(int argc, char **argv) {
 		bus.ports[i++] = new PortMapping(opt.plic_start_addr, opt.plic_end_addr, plic);
 		bus.ports[i++] = new PortMapping(opt.i2c0_start_addr, opt.i2c0_end_addr, i2c0);
 		bus.ports[i++] = new PortMapping(opt.i2c1_start_addr, opt.i2c1_end_addr, i2c1);
+		bus.ports[i++] = new PortMapping(0x09005000ull, 0x09005fffull, timer);
 		bus.ports[i++] = new PortMapping(opt.console_start_addr, opt.console_end_addr, console);
 		bus.ports[i++] = new PortMapping(opt.exiter_start_addr, opt.exiter_end_addr, exiter);
 	}
@@ -129,6 +159,7 @@ int sc_main(int argc, char **argv) {
 		bus.isocks[i++].bind(plic.tsock);
 		bus.isocks[i++].bind(i2c0.socket);
 		bus.isocks[i++].bind(i2c1.socket);
+		bus.isocks[i++].bind(timer.tsock);
 		bus.isocks[i++].bind(console.tsock);
 		bus.isocks[i++].bind(exiter.tsock);
 	}
@@ -161,9 +192,11 @@ int sc_main(int argc, char **argv) {
 	i2c0.plic = &plic;
 	i2c0.ev_irq_id = 1u;
 	i2c0.er_irq_id = 2u;
+	i2c0.sim_ticks = &timer.counter;
 	i2c1.plic = &plic;
 	i2c1.ev_irq_id = 3u;
 	i2c1.er_irq_id = 4u;
+	i2c1.sim_ticks = &timer.counter;
 
 	/* Keep the slave addresses fixed for the verification suite. */
 	i2c0.slave_addr = 0x50u;

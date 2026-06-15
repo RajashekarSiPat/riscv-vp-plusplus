@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <systemc>
 
 #include "core/common/irq_if.h"
@@ -47,6 +48,7 @@ public:
 	interrupt_gateway *plic = nullptr;
 	uint32_t ev_irq_id = 0u;
 	uint32_t er_irq_id = 0u;
+	uint64_t *sim_ticks = nullptr;
 	uint32_t slave_addr = 0x50u;
 	uint32_t nack_addr = 0xFFu;
 
@@ -64,6 +66,9 @@ public:
 		dont_initialize();
 		SC_METHOD(tx_frame_done_method);
 		sensitive << m_tx_frame_done_event;
+		dont_initialize();
+		SC_METHOD(irq_event_method);
+		sensitive << m_irq_event;
 		dont_initialize();
 		do_reset();
 	}
@@ -165,6 +170,15 @@ private:
 	uint16_t m_addr10_prefix = 0u;
 	bool m_current_addr10 = false;
 	sc_core::sc_time m_clk_period = sc_core::SC_ZERO_TIME;
+	sc_core::sc_time m_bus_time = sc_core::SC_ZERO_TIME;
+	sc_core::sc_time m_irq_delay = sc_core::SC_ZERO_TIME;
+	sc_core::sc_time m_irq_base_delay = sc_core::SC_ZERO_TIME;
+	struct PendingIrq {
+		uint32_t id;
+		sc_core::sc_time when;
+	};
+	std::deque<PendingIrq> m_pending_irqs;
+	sc_core::sc_event m_irq_event;
 	sc_core::sc_event m_rx_arm_event;
 	sc_core::sc_event m_rx_frame_done_event;
 	sc_core::sc_event m_tx_frame_done_event;
@@ -189,6 +203,11 @@ private:
 		m_addr10_prefix = 0u;
 		m_current_addr10 = false;
 		m_clk_period = sc_core::SC_ZERO_TIME;
+		m_bus_time = sc_core::SC_ZERO_TIME;
+		m_irq_delay = sc_core::SC_ZERO_TIME;
+		m_irq_base_delay = sc_core::SC_ZERO_TIME;
+		m_pending_irqs.clear();
+		m_irq_event.cancel();
 		m_rx_arm_event.cancel();
 		m_rx_frame_done_event.cancel();
 		m_tx_frame_done_event.cancel();
@@ -240,6 +259,10 @@ private:
 		trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
 		bus_initiator_socket->b_transport(trans, delay);
 		return trans.is_response_ok();
+	}
+
+	void arm_irq_delay() {
+		m_irq_delay = byte_frame_time();
 	}
 
 	bool bus_start() {
@@ -346,17 +369,47 @@ private:
 		}
 	}
 
+	void irq_event_method() {
+		if (m_pending_irqs.empty()) {
+			return;
+		}
+		const PendingIrq pending = m_pending_irqs.front();
+		m_pending_irqs.pop_front();
+		if (sim_ticks != nullptr) {
+			*sim_ticks = static_cast<uint64_t>(pending.when.value());
+		}
+		trigger_irq(pending.id);
+		if (!m_pending_irqs.empty()) {
+			sc_core::sc_time next_delay = m_pending_irqs.front().when - sc_core::sc_time_stamp();
+			if (next_delay < sc_core::SC_ZERO_TIME) {
+				next_delay = sc_core::SC_ZERO_TIME;
+			}
+			m_irq_event.notify(next_delay);
+		}
+	}
+
+	void queue_irq(uint32_t irq_id) {
+		m_pending_irqs.push_back(PendingIrq{irq_id, m_irq_base_delay + m_irq_delay});
+		if (m_pending_irqs.size() == 1u) {
+			sc_core::sc_time next_delay = m_pending_irqs.front().when - sc_core::sc_time_stamp();
+			if (next_delay < sc_core::SC_ZERO_TIME) {
+				next_delay = sc_core::SC_ZERO_TIME;
+			}
+			m_irq_event.notify(next_delay);
+		}
+	}
+
 	void set_ev_flags(uint32_t bits) {
 		m_sr1 |= bits;
 		if (ev_irq_enabled(bits)) {
-			trigger_irq(ev_irq_id);
+			queue_irq(ev_irq_id);
 		}
 	}
 
 	void set_er_flags(uint32_t bits) {
 		m_sr1 |= bits;
 		if (er_irq_enabled(bits)) {
-			trigger_irq(er_irq_id);
+			queue_irq(er_irq_id);
 		}
 	}
 
@@ -387,6 +440,7 @@ private:
 			return;
 		}
 		m_rx_frame_pending = true;
+		arm_irq_delay();
 		m_rx_frame_done_event.notify(byte_frame_time());
 	}
 
@@ -395,10 +449,12 @@ private:
 			return;
 		}
 		m_tx_frame_pending = true;
+		arm_irq_delay();
 		m_tx_frame_done_event.notify(byte_frame_time());
 	}
 
-	void bus_b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &) {
+	void bus_b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &delay) {
+		m_irq_base_delay = m_bus_time;
 		trans.set_dmi_allowed(false);
 		trans.set_response_status(tlm::TLM_OK_RESPONSE);
 		if (trans.get_data_length() < sizeof(I2cBusFrame) || trans.get_data_ptr() == nullptr) {
@@ -476,6 +532,8 @@ private:
 		}
 
 		*reinterpret_cast<I2cBusFrame *>(trans.get_data_ptr()) = frame;
+		m_bus_time += frame.scl.period;
+		delay += frame.scl.period;
 	}
 
 	void b_transport(tlm::tlm_generic_payload &trans, sc_core::sc_time &) {
@@ -571,6 +629,7 @@ private:
 		}
 		if ((val & CR1_START) && (val & CR1_PE)) {
 			m_external_transfer = false;
+			arm_irq_delay();
 			const bool repeated_10bit_start = m_current_addr10 && m_current_addr != 0u;
 			if (!repeated_10bit_start) {
 				m_current_addr = 0u;
@@ -589,6 +648,7 @@ private:
 	void complete_address(uint16_t addr, bool read, bool addr10) {
 		m_rx_mode = read;
 		const uint32_t nack = nack_addr & 0x7Fu;
+		arm_irq_delay();
 		const bool external_ack = bus_address(addr, read);
 		if (external_ack && (addr & 0x7Fu) != nack) {
 			m_external_transfer = true;
@@ -618,6 +678,7 @@ private:
 				const bool read_header = (byte & 1u) != 0u;
 				if (read_header && m_current_addr10 && (m_current_addr & 0x0300u) == prefix) {
 					m_rx_mode = true;
+					arm_irq_delay();
 					const bool external_ack = bus_address(m_current_addr, true);
 					if (external_ack) {
 						m_external_transfer = true;
@@ -646,6 +707,7 @@ private:
 		} else if (m_state == State::TX_DATA) {
 			m_dr_tx = byte;
 			m_sr1 &= ~(SR1_TxE | SR1_BTF);
+			arm_irq_delay();
 			if (m_external_transfer && !bus_write(byte)) {
 				set_er_flags(SR1_AF);
 				return;

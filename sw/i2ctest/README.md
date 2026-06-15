@@ -2,7 +2,9 @@
 
 Bare-metal regression for the `i2ctest-vp` platform. The suite exercises the
 STM32-style `i2c_stm32` controller pair in VP++, with I2C0 as master and I2C1
-as the peer slave, and checks the interrupt trail for each directed scenario.
+as the peer slave, and checks the interrupt trail for each directed scenario. It
+also timestamps interrupt entries through a small MMIO timer peripheral so the
+spacing between interrupts can be asserted.
 
 ## Build
 
