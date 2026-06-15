@@ -330,7 +330,10 @@ private:
 
 	uint16_t primary_addr() const {
 		if (m_oar1 != 0u) {
-			return static_cast<uint16_t>(m_oar1 & ((m_oar1 & OAR1_ADDMODE) ? 0x03FFu : 0x7Fu));
+			if ((m_oar1 & OAR1_ADDMODE) != 0u) {
+				return static_cast<uint16_t>(m_oar1 & 0x03FFu);
+			}
+			return static_cast<uint16_t>((m_oar1 >> 1u) & 0x7Fu);
 		}
 		return static_cast<uint16_t>(slave_addr & 0x7Fu);
 	}

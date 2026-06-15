@@ -521,7 +521,7 @@ static void i2c_init(void)
 	I2C1_CR1 = CR1_SWRST;
 	I2C1_CR1 = 0u;
 	I2C1_CR2 = 36u | CR2_ITEVTEN | CR2_ITBUFEN | CR2_ITERREN;
-	I2C1_OAR1 = I2C0_SLAVE_ADDR;
+	I2C1_OAR1 = I2C0_SLAVE_ADDR << 1u;
 	I2C1_OAR2 = 0u;
 	I2C1_CCR = 4000u;
 	I2C1_TRISE = 37u;
@@ -573,7 +573,7 @@ static void i2c1_config_7bit(unsigned int addr, unsigned int cr1_extra)
 	I2C1_CR1 = CR1_SWRST;
 	I2C1_CR1 = 0u;
 	I2C1_CR2 = 36u | CR2_ITEVTEN | CR2_ITBUFEN | CR2_ITERREN;
-	I2C1_OAR1 = addr & 0x7Fu;
+	I2C1_OAR1 = (addr & 0x7Fu) << 1u;
 	I2C1_OAR2 = 0u;
 	I2C1_CCR = 4000u;
 	I2C1_TRISE = 37u;
